@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+import os
+import glob
+import time
+import timeit
+import signal
+import alsaaudio
+import threading
+import subprocess
+from Xlib import display
+
+
+def notify(summary, body=None, icon=None, value=None, urgency=None, timeout=3):
+    cmd = ['notify-send', summary,
+           '-t', str(int(timeout * 1000))]
+    cmd.extend(['-h', 'string:category:dwm-status'])
+    if urgency:
+        cmd.extend(['-h', f"byte:urgency:{urgency}"])
+    if icon:
+        cmd.extend(['-h', f"string:image-path:{icon}"])
+    if value:
+        cmd.extend(['-h', f"int:value:{value}"])
+    if body:
+        cmd.append(body)
+    subprocess.run(cmd)
+
+
+class loop(object):
+    """ loop a function, can be used as a decorator: @loop(seconds) """
+
+    def __init__(self, interval):
+        self.interval = interval
+
+    def __call__(self, function):
+        def loopfunc(*args):
+            while not time.sleep(self.interval):
+                function(*args)
+        return loopfunc
+
+
+class Status:
+    def __init__(self):
+        self.dpy = display.Display()
+        self.root = self.dpy.screen().root
+        self.alsa = alsaaudio.Mixer()
+
+        self.cache = dict()
+        self.status = dict()
+
+    def xsetroot_name(self, name):
+        self.root.set_wm_name(name)
+        self.dpy.sync()
+
+    def power_status(self):
+        for status in glob.glob("/sys/class/power_supply/A*/online"):
+            if open(status).readline().strip() == '1':
+                return True
+
+    @loop(1)
+    def battery(self):
+        # not done
+        for battery in glob.glob("/sys/class/power_supply/BAT*/uevent"):
+            uevent = {k: v.strip() for k, v in [line.split('=') for line in open(battery)]}
+
+            status = uevent.get('POWER_SUPPLY_STATUS').lower()
+            charge_full = uevent.get('POWER_SUPPLY_CHARGE_FULL')
+            charge_now = uevent.get('POWER_SUPPLY_CHARGE_NOW')
+            energy_full = uevent.get('POWER_SUPPLY_ENERGY_FULL')
+            energy_now = uevent.get('POWER_SUPPLY_ENERGY_NOW')
+            capacity = uevent.get('POWER_SUPPLY_CAPACITY')
+            voltage_now = uevent.get('POWER_SUPPLY_VOLTAGE_NOW')
+            current_now = uevent.get('POWER_SUPPLY_CURRENT_NOW')
+            power_now = uevent.get('POWER_SUPPLY_POWER_NOW')
+            time_to_empty_now = uevent.get('POWER_SUPPLY_TIME_TO_EMPTY_NOW')
+            time_to_full_now = uevent.get('POWER_SUPPLY_TIME_TO_FULL_NOW')
+
+            if capacity:
+                perc = int(capacity)
+            elif charge_now and charge_full and current_now:
+                perc = int(float(charge_now) / float(charge_full))
+            elif energy_now and energy_full and \
+                    (power_now or current_now and voltage_now):
+                perc = int(float(energy_now) / float(energy_full))
+            else:
+                perc = 0
+
+            self.status['battery'] = perc
+
+            if power_now:
+                power = float(power_now) / 10**6
+            elif voltage_now and current_now:
+                power = float(current_now) * float(voltage_now) / 10**12
+            elif current_now:
+                current = float(current_now) / 10**6
+            if status == 'charging':
+                if time_to_full_now:
+                    time = time_to_full_now
+                else:
+                    time = 0
+            elif status == 'discharging' and time_to_empty_now:
+                time = time_to_empty_now
+                time_to_empty_now
+
+    def cpu(self):
+        for line in open("/proc/stat"):
+            if line.split()[0] == "cpu":
+                cols = [float(c) for c in line.split()[1:]]
+                idle = cols[3] + cols[4]
+                total = sum(cols)
+                break
+
+        try:
+            diff_idle = idle - self.cache['idle']
+            diff_total = total - self.cache['total']
+            perc = (1 - diff_idle / diff_total) * 100
+        except (ZeroDivisionError, KeyError):
+            perc = 0
+
+        self.cache['idle'] = idle
+        self.cache['total'] = total
+        self.status['cpu'] = perc
+        return {'cpu': perc}
+
+    @loop(120)
+    def imap(self):
+        # with IMAP4_SSL()
+        pass
+
+    def memory(self):
+        pass
+
+    def network(self):
+        pass
+
+    def volume(self):
+        volumes = self.alsa.getvolume()
+        self.status['vol'] = sum(volumes) / len(volumes)
+
+    def brightness(self):
+        for light in glob.glob("/sys/class/backlight/*"):
+            try:
+                current = open(light + "/brightness").read().strip()
+                maximum = open(light + "/max_brightness").read().strip()
+                self.status['bl'] = 100.0 * float(current) / float(maximum)
+            except (FileNotFoundError, ZeroDivisionError):
+                continue
+
+    def mpd(self):
+        pass
+
+    def date(self):
+        self.status['datetime'] = time.strftime("%a %b %d %H:%M")
+
+    def test(self):
+        self.xsetroot_name(str(self.status))
+        print(self.status)
+        notify(str(self.status), icon="document-new.svg")
+
+    def update(self):
+        self.brightness()
+        self.cpu()
+        self.volume()
+        self.test()
+
+    def handler(self, number, frame):
+        print(timeit.timeit(self.test, number=1))
+
+
+segments = {
+    'date': '󰃰',
+    'notification': '󰂞',
+    'exec': '󰣖',
+    'apps': '󰍉',
+    'mpd': '󰝚',
+    'brightness': '󰃟',
+    'mail': '󰇰',
+    'memory': '󰍛',
+    'cpu': '󰓅',
+    'play': ['󰏤', '󰐊', '󰓛']
+}
+
+
+def main():
+    notify("test", value=9, icon="weather-clear-night-symbolic")
+
+    with open('/tmp/status.pid', 'w') as pidfile:
+        pidfile.write(str(os.getpid()))
+
+    stat = Status()
+
+    for sig in range(signal.SIGRTMIN, signal.SIGRTMAX + 1):
+        signal.signal(sig, stat.handler)
+
+    threads = [
+        threading.Thread(target=stat.battery, args=()),
+        threading.Thread(target=stat.battery, args=()),
+        threading.Thread(target=stat.battery, args=()),
+        threading.Thread(target=stat.battery, args=()),
+    ]
+
+    for t in threads:
+        t.start()
+
+    while True:
+        print(stat.status)
+        stat.test()
+        time.sleep(1)
+
+
+if __name__ == '__main__':
+    main()
