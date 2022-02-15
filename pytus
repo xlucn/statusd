@@ -2,17 +2,18 @@
 import os
 import glob
 import time
-import timeit
 import signal
-import alsaaudio
 import threading
-import subprocess
+from pyalsa import alsamixer
 from Xlib import display
 
 
+def color(string, fg, bg):
+    return ""
+
+
 def notify(summary, body=None, icon=None, value=None, urgency=None, timeout=3):
-    cmd = ['notify-send', summary,
-           '-t', str(int(timeout * 1000))]
+    cmd = ['notify-send', summary, '-t', str(int(timeout * 1000))]
     cmd.extend(['-h', 'string:category:dwm-status'])
     if urgency:
         cmd.extend(['-h', f"byte:urgency:{urgency}"])
@@ -22,7 +23,8 @@ def notify(summary, body=None, icon=None, value=None, urgency=None, timeout=3):
         cmd.extend(['-h', f"int:value:{value}"])
     if body:
         cmd.append(body)
-    subprocess.run(cmd)
+    # subprocess.run(cmd)
+    print(cmd)
 
 
 class loop(object):
@@ -33,7 +35,8 @@ class loop(object):
 
     def __call__(self, function):
         def loopfunc(*args):
-            while not time.sleep(self.interval):
+            while not stop_event.is_set():
+                time.sleep(self.interval)
                 function(*args)
         return loopfunc
 
@@ -42,21 +45,27 @@ class Status:
     def __init__(self):
         self.dpy = display.Display()
         self.root = self.dpy.screen().root
-        self.alsa = alsaaudio.Mixer()
+
+        self.mixer = alsamixer.Mixer()
+        self.mixer.attach()
+        self.mixer.load()
+        self.alsa = alsamixer.Element(self.mixer, 'Master')
+        self.alsa_range = self.alsa.get_volume_range()
 
         self.cache = dict()
         self.status = dict()
 
     def xsetroot_name(self, name):
-        self.root.set_wm_name(name)
-        self.dpy.sync()
+        print("window name: " + name)
+        # self.root.set_wm_name(name)
+        # self.dpy.sync()
 
-    def power_status(self):
+    def power(self):
         for status in glob.glob("/sys/class/power_supply/A*/online"):
             if open(status).readline().strip() == '1':
-                return True
+                self.status['power'] = 1
+                break
 
-    @loop(1)
     def battery(self):
         # not done
         for battery in glob.glob("/sys/class/power_supply/BAT*/uevent"):
@@ -119,21 +128,28 @@ class Status:
         self.cache['idle'] = idle
         self.cache['total'] = total
         self.status['cpu'] = perc
-        return {'cpu': perc}
 
-    @loop(120)
     def imap(self):
         # with IMAP4_SSL()
         pass
 
     def memory(self):
-        pass
+        meminfo = [line.split(':') for line in open('/proc/meminfo')]
+        mem = {k: int(v.strip().split()[0]) for k, v in meminfo}
+        self.status['mem_used'] = mem['MemTotal'] - mem['MemAvailable']
+        self.status['mem_total'] = mem['MemTotal']
+        self.status['mem_perc'] = 100 * self.status['mem_used'] / mem['MemTotal']
+        self.status['swap_used'] = mem['SwapTotal'] - mem['SwapFree']
+        self.status['swap_total'] = mem['SwapTotal']
+        self.status['swap_perc'] = 100 * self.status['swap_used'] / mem['SwapTotal']
+
 
     def network(self):
         pass
 
     def volume(self):
-        volumes = self.alsa.getvolume()
+        volumes = self.alsa.get_volume_array()
+        volumes = [v * 100 / self.alsa_range[1] for v in volumes]
         self.status['vol'] = sum(volumes) / len(volumes)
 
     def brightness(self):
@@ -149,21 +165,29 @@ class Status:
         pass
 
     def date(self):
-        self.status['datetime'] = time.strftime("%a %b %d %H:%M")
+        self.status['datetime'] = time.strftime("%a %b %d %H:%M:%S")
 
     def test(self):
-        self.xsetroot_name(str(self.status))
-        print(self.status)
-        notify(str(self.status), icon="document-new.svg")
-
-    def update(self):
-        self.brightness()
-        self.cpu()
-        self.volume()
-        self.test()
+        fmt = "mem:{mem:.0f} cpu:{cpu:.0f} vol:{vol:.0f} bl:{bl:.0f} bat:{bat:.0f}"
+        self.xsetroot_name(fmt.format(
+            mem=self.status.get('mem_perc', 0),
+            cpu=self.status.get('cpu', 0),
+            vol=self.status.get('vol', 0),
+            bl=self.status.get('bl', 0),
+            bat=self.status.get('battery', 0),
+        ) + self.status.get('datetime', ''))
 
     def handler(self, number, frame):
-        print(timeit.timeit(self.test, number=1))
+        n = number - signal.SIGRTMIN
+        notify(str(self.status) + f' {n}')
+
+    def clean_up(self, number, frame):
+        stop_event.set()
+
+
+class date:
+    def run(self):
+        return time.strftime("%a %b %d %H:%M:%S")
 
 
 segments = {
@@ -180,32 +204,39 @@ segments = {
 }
 
 
-def main():
-    notify("test", value=9, icon="weather-clear-night-symbolic")
+if __name__ == '__main__':
+    segments = [
+        date,
+    ]
 
     with open('/tmp/status.pid', 'w') as pidfile:
         pidfile.write(str(os.getpid()))
 
+    stop_event = threading.Event()
     stat = Status()
 
     for sig in range(signal.SIGRTMIN, signal.SIGRTMAX + 1):
         signal.signal(sig, stat.handler)
+    signal.signal(signal.SIGTERM, stat.clean_up)
+    signal.signal(signal.SIGINT, stat.clean_up)
 
     threads = [
-        threading.Thread(target=stat.battery, args=()),
-        threading.Thread(target=stat.battery, args=()),
-        threading.Thread(target=stat.battery, args=()),
-        threading.Thread(target=stat.battery, args=()),
+        threading.Thread(target=loop(1)(stat.battery), args=()),
+        threading.Thread(target=loop(1)(stat.brightness), args=()),
+        threading.Thread(target=loop(1)(stat.cpu), args=()),
+        threading.Thread(target=loop(1)(stat.date), args=()),
+        threading.Thread(target=loop(1)(stat.memory), args=()),
+        threading.Thread(target=loop(1)(stat.power), args=()),
+        threading.Thread(target=loop(1)(stat.volume), args=()),
     ]
 
     for t in threads:
         t.start()
 
-    while True:
-        print(stat.status)
+    while not stop_event.is_set():
         stat.test()
         time.sleep(1)
 
-
-if __name__ == '__main__':
-    main()
+    for t in threads:
+        t.join()
+    os.remove("/tmp/status.pid")
