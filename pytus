@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""
+Update dwm status
+"""
 import os
 import glob
 import time
@@ -7,10 +10,6 @@ import threading
 from mpd import MPDClient
 from pyalsa import alsamixer
 from Xlib import display
-
-
-def color(string, fg, bg):
-    return ""
 
 
 def notify(summary, body=None, icon=None, value=None, urgency=None, timeout=3):
@@ -28,47 +27,63 @@ def notify(summary, body=None, icon=None, value=None, urgency=None, timeout=3):
     print(cmd)
 
 
-class Status2:
+class Status:
     def __init__(self, segments):
         self.dpy = display.Display()
         self.root = self.dpy.screen().root
 
+        self.stopped = threading.Event()
         self.status = []
         self.threads = []
-        self.stopped = threading.Event()
         for segment in segments:
             index = len(self.status)
-            func = self.loop(index, segment.interval, segment.run)
-            t = threading.Thread(target=func)
+            t = threading.Thread(target=self.update(index, segment))
             self.threads.append(t)
             self.status.append("")
             t.start()
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
+        # for sig in range(signal.SIGRTMIN, signal.SIGRTMAX + 1):
+        #     signal.signal(sig, stat.handler)
 
-    def loop(self, i, interval, function):
-        def loopfunc():
+        self.pidfile = '/tmp/status.pid'
+        with open(self.pidfile, 'w') as pidfile:
+            pidfile.write(str(os.getpid()))
+
+    def update(self, i, segment):
+        def func():
             while not self.stopped.is_set():
-                time.sleep(interval)
-                self.status[i] = function()
-        return loopfunc
+                time.sleep(segment.interval)
+                fmts = segment.run()
+                self.status[i] = segment.fmtstr.format_map(fmts)
+        return func
 
     def show(self):
-        print(' '.join(self.status))
-        # self.root.set_wm_name(' '.join(self.status))
-        # self.dpy.sync()
+        # print(' '.join(self.status))
+        self.root.set_wm_name(' '.join(self.status))
+        self.dpy.sync()
+
+    def run(self):
+        while not self.stopped.is_set():
+            time.sleep(1)
+            self.show()
 
     def stop(self, number, frame):
         self.stopped.set()
         for t in self.threads:
             t.join()
+        os.remove(self.pidfile)
 
 
-class ALSA:
-    def __init__(self, fmt="{vol}", icons=[], interval=1):
+class Segment:
+    def __init__(self, fmt, interval=1, icons=[]):
         self.interval = interval
         self.fmtstr = fmt
 
+
+class ALSA(Segment):
+    def __init__(self, fmt, interval=1, icons=[]):
+        super().__init__(fmt, interval, icons)
         self.mixer = alsamixer.Mixer()
         self.mixer.attach()
         self.mixer.load()
@@ -78,36 +93,25 @@ class ALSA:
     def run(self):
         volumes = self.alsa.get_volume_array()
         volumes = [v * 100 / self.alsa_range[1] for v in volumes]
-        fmts = {
+        return {
             'vol': sum(volumes) / len(volumes)
         }
-        return self.fmtstr.format_map(fmts)
 
 
-class Backlight:
-    def __init__(self, fmt="{backlight}", icons=[], interval=1):
-        self.interval = interval
-        self.fmtstr = fmt
-
+class Backlight(Segment):
     def run(self):
         for light in glob.glob("/sys/class/backlight/*"):
             try:
                 current = open(light + "/brightness").read().strip()
                 maximum = open(light + "/max_brightness").read().strip()
-                fmts = {
+                return {
                     "backlight": 100.0 * float(current) / float(maximum)
                 }
             except (FileNotFoundError, ZeroDivisionError):
                 continue
 
-        return self.fmtstr.format_map(fmts)
 
-
-class Battery:
-    def __init__(self, fmt="{perc}", icons=[], interval=1):
-        self.interval = interval
-        self.fmtstr = fmt
-
+class Battery(Segment):
     def run(self):
         # not done
         for battery in glob.glob("/sys/class/power_supply/BAT*/uevent"):
@@ -126,7 +130,7 @@ class Battery:
             time_to_full_now = uevent.get('POWER_SUPPLY_TIME_TO_FULL_NOW')
 
             if capacity:
-                perc = capacity
+                perc = float(capacity)
             elif charge_now and charge_full and current_now:
                 perc = float(charge_now) / float(charge_full)
             elif energy_now and energy_full and \
@@ -148,65 +152,45 @@ class Battery:
                     time = 0
             elif status == 'discharging' and time_to_empty_now:
                 time = time_to_empty_now
-                time_to_empty_now
 
-        fmts = {
+        return {
             'perc': perc
         }
-        return self.fmtstr.format_map(fmts)
 
 
-class CPU:
-    def __init__(self, fmt="{perc}", icons=[], interval=1):
-        self.interval = interval
-        self.fmtstr = fmt
-        self.idle_old = 0
-        self.total_old = 0
-
+class CPU(Segment):
     def run(self):
-        for line in open("/proc/stat"):
-            if line.split()[0] == "cpu":
-                cols = [float(c) for c in line.split()[1:]]
-                idle = cols[3] + cols[4]
-                total = sum(cols)
-                break
+        line = open("/proc/stat").readline()
+        cols = [float(c) for c in line.split()[1:]]
+        idle = cols[3] + cols[4]
+        total = sum(cols)
 
         try:
             diff_idle = idle - self.idle_old
             diff_total = total - self.total_old
             perc = (1 - diff_idle / diff_total) * 100
-        except (ZeroDivisionError, KeyError):
+        except (ZeroDivisionError, AttributeError):
             perc = 0
 
         self.idle_old = idle
         self.total_old = total
-        fmts = {
+        return {
             'cpu_idle': idle,
             'cpu_total': total,
             'perc': perc
         }
-        return self.fmtstr.format_map(fmts)
 
 
-class Date:
-    def __init__(self, fmt="{date}", icons=[], interval=1):
-        self.interval = interval
-        self.fmtstr = fmt
-
+class Date(Segment):
     def run(self):
-        fmts = {'date': time.strftime("%a %b %d %H:%M:%S")}
-        return self.fmtstr.format_map(fmts)
+        return {'date': time.strftime("%a %b %d %H:%M:%S")}
 
 
-class Memory:
-    def __init__(self, fmt="{perc}", icons=[], interval=1):
-        self.interval = interval
-        self.fmtstr = fmt
-
+class Memory(Segment):
     def run(self):
         meminfo = [line.split(':') for line in open('/proc/meminfo')]
         mem = {k: int(v.strip().split()[0]) for k, v in meminfo}
-        fmts = {
+        return {
             'used': mem['MemTotal'] - mem['MemAvailable'],
             'total': mem['MemTotal'],
             'perc': 100 * (mem['MemTotal'] - mem['MemAvailable']) / mem['MemTotal'],
@@ -214,75 +198,42 @@ class Memory:
             'swap_total': mem['SwapTotal'],
             'swap_perc': 100 * (mem['SwapTotal'] - mem['SwapFree']) / mem['SwapTotal']
         }
-        return self.fmtstr.format_map(fmts)
 
 
-class Mpd:
-    def __init__(self, fmt="{status}", icons=[], interval=1):
-        self.interval = interval
-        self.fmtstr = fmt
+class Mpd(Segment):
+    def __init__(self, fmt, interval=1, icons=[]):
+        super().__init__(fmt, interval, icons)
         self.mpdclient = MPDClient()
         self.mpdclient.connect("localhost", 6600)
 
     def run(self):
         currentsong = self.mpdclient.currentsong()
         status = self.mpdclient.status()
-        fmts = {
+        return {
             'song': currentsong.get('file', ''),
             'time': float(currentsong.get('time', 0)),
             'elapsed': float(status.get('elapsed', 0)),
             'status': status.get('state', '')
         }
-        return self.fmtstr.format_map(fmts)
 
 
-class Power:
-    def __init__(self, fmt="{power}", icons=[], interval=1):
-        self.interval = interval
-        self.fmtstr = fmt
-
+class Power(Segment):
     def run(self):
         for status in glob.glob("/sys/class/power_supply/A*/online"):
             if open(status).readline().strip() == '1':
-                fmts = {'power': 1}
-                break
-
-        return self.fmtstr.format_map(fmts)
-
-
-segments = {
-    'notification': '󰂞',
-    'exec': '󰣖',
-    'apps': '󰍉',
-    'mpd': '󰝚',
-    'brightness': '󰃟',
-    'mail': '󰇰',
-    'memory': '󰍛',
-    'cpu': '󰓅',
-    'play': ['󰏤', '󰐊', '󰓛']
-}
+                return {'power': 1}
+            else:
+                return {'power': 0}
 
 
 if __name__ == '__main__':
-    with open('/tmp/status.pid', 'w') as pidfile:
-        pidfile.write(str(os.getpid()))
-
-    status = Status2([
-        ALSA(),
-        Backlight(),
-        Battery(),
-        CPU(),
-        Date(icons=["󰃰"]),
-        Memory(),
-        Mpd(),
-        Power(),
-    ])
-
-#     for sig in range(signal.SIGRTMIN, signal.SIGRTMAX + 1):
-#         signal.signal(sig, stat.handler)
-
-    while not status.stopped.is_set():
-        time.sleep(1)
-        status.show()
-
-    os.remove("/tmp/status.pid")
+    Status([
+        Memory("mem:{perc:.0f}", icons=['󰍛']),
+        CPU("cpu:{perc:.1f}", icons=['󰓅']),
+        ALSA("alsa:{vol:.0f}"),
+        Backlight("bl:{backlight:.0f}", icons=['󰃟']),
+        Mpd("mpd:{status}", icons=['󰝚']),
+        Power("power:{power}"),
+        Battery("bat:{perc:.0f}"),
+        Date("{date}", icons=["󰃰"]),
+    ]).run()
