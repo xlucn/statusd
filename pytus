@@ -7,30 +7,33 @@ Dependency:
     See https://github.com/OliverLew/dwm
 """
 
+import dbus
 import glob
 import os
 import signal
-import subprocess
 import sys
 import threading
 import time
-from mpd import MPDClient
+from mpd import MPDClient, base
 from pyalsa import alsamixer
+from alsaaudio import Mixer
 from Xlib import display
 
 
-def notify(summary, body=None, icon=None, value=None, urgency=None, timeout=3):
-    cmd = ['notify-send', summary, '-t', str(int(timeout * 1000))]
-    cmd.extend(['-h', 'string:category:dwm-status'])
-    if urgency:
-        cmd.extend(['-h', f"byte:urgency:{urgency}"])
-    if icon:
-        cmd.extend(['-h', f"string:image-path:{icon}"])
-    if value:
-        cmd.extend(['-h', f"int:value:{value}"])
-    if body:
-        cmd.append(body)
-    subprocess.run(cmd)
+class Notification:
+    def __init__(self):
+        bus_name = "org.freedesktop.Notifications"
+        obj_path = "/org/freedesktop/Notifications"
+        bus = dbus.SessionBus()
+        obj = bus.get_object(bus_name, obj_path)
+        interface = dbus.Interface(obj, bus_name)
+        self.notify_func = interface.get_dbus_method("Notify")
+
+    def notify(self, summary, body="", icon="", value=None, urgency=1, timeout=3000):
+        hints = {"urgency": urgency, "category": "dwm-status"}
+        if value:
+            hints['value'] = value
+        self.notify_func("dwm-status", 0, icon, summary, body, [], hints, timeout)
 
 
 class Status:
@@ -43,9 +46,9 @@ class Status:
         self.threads = []
         for segment in segments:
             index = len(self.status)
+            self.status.append("")
             t = threading.Thread(target=self.update(index, segment))
             self.threads.append(t)
-            self.status.append("")
             t.start()
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
@@ -62,10 +65,14 @@ class Status:
                 time.sleep(segment.interval)
                 fmts = segment.run()
                 segstr = segment.fmtstr.format_map(fmts)
-                if len(segment.icons) > 0:
-                    segstr = segment.icons[0] + segstr
-                segstr = f"\001{segstr}\017"
+                if segment.icons:
+                    segstr = segment.icons.split()[0] + segstr
+                segstr = chr(i + 1) + f"{segstr}" + chr(15)
                 self.status[i] = segstr
+
+        if i >= 14:
+            notification.notify("At most 14 segments are allowed")
+            exit(1)
         return func
 
     def show(self):
@@ -75,7 +82,9 @@ class Status:
 
     def run(self):
         while not self.stopped.is_set():
-            time.sleep(1)
+            curtime = time.time()
+            nextsec = int(curtime + 0.5) + 1
+            time.sleep(nextsec - curtime)
             self.show()
 
     def stop(self, number, frame):
@@ -86,15 +95,43 @@ class Status:
 
 
 class Segment:
-    def __init__(self, fmt, interval=1, icons=[]):
+    def __init__(self, fmt, interval=1, icons=None, color=0, keys={}):
         self.interval = interval
         self.fmtstr = fmt
         self.icons = icons
+        self.color = 0
+        self.timer = None
 
 
 class ALSA(Segment):
-    def __init__(self, fmt, interval=1, icons=[]):
-        super().__init__(fmt, interval, icons)
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
+        self.mixer = Mixer()
+        self.max = self.mixer.getrange()[1]
+
+    def run(self):
+        mute = self.mixer.getmute()
+        return {
+            'vol': self.mixer.getvolume()[0],
+            'mute': all(mute)
+        }
+
+    def up(self):
+        volume = self.mixer.getvolume()[0] + 4
+        if volume >= self.max:
+            volume = self.max
+        self.mixer.setvolume(volume)
+
+    def down(self):
+        volume = self.mixer.getvolume()[0] - 4
+        if volume < 0:
+            volume = 0
+        self.mixer.setvolume(volume)
+
+
+class ALSA2(Segment):
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
         self.mixer = alsamixer.Mixer()
         self.mixer.attach()
         self.mixer.load()
@@ -102,11 +139,25 @@ class ALSA(Segment):
         self.alsa_range = self.alsa.get_volume_range()
 
     def run(self):
-        volumes = self.alsa.get_volume_array()
-        volumes = [v * 100 / self.alsa_range[1] for v in volumes]
+        volume = self.alsa.get_volume()
         return {
-            'vol': sum(volumes) / len(volumes)
+            'vol': 100.0 * volume / self.alsa_range[1],
+            'active': self.alsa.get_switch()
         }
+
+    def up(self):
+        volume = self.alsa.get_volume()
+        volume += 0.04 * self.alsa_range[1]
+        if volume >= self.alsa_range[1]:
+            volume = self.alsa_range[1]
+        self.alsa.set_volume_all(volume)
+
+    def down(self):
+        volume = self.alsa.get_volume()
+        volume -= 0.04 * self.alsa_range[1]
+        if volume < 0:
+            volume = 0
+        self.alsa.set_volume_all(volume)
 
 
 class Backlight(Segment):
@@ -212,20 +263,43 @@ class Memory(Segment):
 
 
 class Mpd(Segment):
-    def __init__(self, fmt, interval=1, icons=[]):
-        super().__init__(fmt, interval, icons)
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
         self.mpdclient = MPDClient()
-        self.mpdclient.connect("localhost", 6600)
+        self.connect()
+
+    def connect(self):
+        try:
+            self.mpdclient.connect("localhost", 6600)
+        except ConnectionRefusedError:
+            time.sleep(1)
 
     def run(self):
-        currentsong = self.mpdclient.currentsong()
-        status = self.mpdclient.status()
-        return {
-            'song': currentsong.get('file', ''),
-            'time': float(currentsong.get('time', 0)),
-            'elapsed': float(status.get('elapsed', 0)),
-            'status': status.get('state', '')
-        }
+        try:
+            currentsong = self.mpdclient.currentsong()
+            status = self.mpdclient.status()
+            return {
+                'song': currentsong.get('file', ''),
+                'time': float(currentsong.get('time', 0)),
+                'elapsed': float(status.get('elapsed', 0)),
+                'status': status.get('state', '')
+            }
+        except base.ConnectionError:
+            self.connect()
+            return {'song': "", 'time': 0, 'elapsed': 0, 'status': "n/a"}
+
+
+class Network(Segment):
+    def run(self):
+        fmts = {'ethernet': 0, 'wlan': 0, 'level': 0}
+        netdir = "/sys/class/net"
+        for iface in os.listdir(netdir):
+            ipath = os.path.join(netdir, iface, "operstate")
+            state = open(ipath).readline().strip()
+            if iface.startswith('e') and state == "up":
+                fmts['ethernet'] = 1
+            if iface.startswith('w') and state == "up":
+                fmts['wlan'] = 1
 
 
 class Power(Segment):
@@ -238,17 +312,18 @@ class Power(Segment):
 
 
 if __name__ == '__main__':
+    notification = Notification()
     if len(sys.argv) > 1:
-        notify("Button:{},pos:{}".format(os.getenv("BUTTON"), sys.argv[1]))
+        notification.notify("Button:{},pos:{}".format(os.getenv("BUTTON"), sys.argv[1]))
         exit()
 
     Status([
-        Memory("{perc:2.0f}", icons=['󰍛']),
-        CPU("{perc:2.0f}", icons=['󰓅']),
-        ALSA("alsa:{vol:2.0f}"),
-        Backlight("{backlight:2.0f}", icons=['󰃟']),
-        Mpd("{status}", icons=['󰝚']),
+        Memory("{perc:2.0f}", icons='󰍛'),
+        CPU("{perc:2.0f}", icons='󰓅'),
+        ALSA("{vol:2.0f},{mute}", icons='󰕾 󰖁', keys={4: "up", 5: "down"}),
+        Backlight("{backlight:2.0f}", icons='󰃟'),
+        Mpd("{status}", icons='󰝚'),
         Power("power:{power}"),
-        Battery("bat:{perc:2.0f}"),
-        Date("{date}", icons=["󰃰"]),
+        Battery("{perc:2.0f}", icons='󰂎 󰁺 󰁻 󰁼 󰁽 󰁾 󰁿 󰂀 󰂁 󰂂 󰁹'),
+        Date("{date}", icons="󰃰"),
     ]).run()
