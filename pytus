@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
 Update dwm status
+
 Dependency:
-    Colors depends on my status color patch
-    Clickable status depends on my statuscmd patch
-    See https://github.com/OliverLew/dwm
+- Colors depends on my status color patch
+- Clickable status depends on my statuscmd patch
+
+See https://github.com/OliverLew/dwm
 """
 
 import dbus
@@ -16,7 +18,6 @@ import threading
 import time
 from mpd import MPDClient, base
 from pyalsa import alsamixer
-from alsaaudio import Mixer
 from Xlib import display
 
 
@@ -65,8 +66,6 @@ class Status:
                 time.sleep(segment.interval)
                 fmts = segment.run()
                 segstr = segment.fmtstr.format_map(fmts)
-                if segment.icons:
-                    segstr = segment.icons.split()[0] + segstr
                 segstr = chr(i + 1) + f"{segstr}" + chr(15)
                 self.status[i] = segstr
 
@@ -104,32 +103,12 @@ class Segment:
 
 
 class ALSA(Segment):
-    def __init__(self, *args, **kargs):
-        super().__init__(*args, **kargs)
-        self.mixer = Mixer()
-        self.max = self.mixer.getrange()[1]
-
-    def run(self):
-        mute = self.mixer.getmute()
-        return {
-            'vol': self.mixer.getvolume()[0],
-            'mute': all(mute)
-        }
-
-    def up(self):
-        volume = self.mixer.getvolume()[0] + 4
-        if volume >= self.max:
-            volume = self.max
-        self.mixer.setvolume(volume)
-
-    def down(self):
-        volume = self.mixer.getvolume()[0] - 4
-        if volume < 0:
-            volume = 0
-        self.mixer.setvolume(volume)
-
-
-class ALSA2(Segment):
+    """
+    Besides arguments for Segments class:
+    `icons` could be a list of:
+        one glyph, or
+        two glyphs, for unmuted and muted state
+    """
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
         self.mixer = alsamixer.Mixer()
@@ -139,22 +118,31 @@ class ALSA2(Segment):
         self.alsa_range = self.alsa.get_volume_range()
 
     def run(self):
+        self.mixer.handle_events()
         volume = self.alsa.get_volume()
+        active = self.alsa.get_switch()
+        if self.icons is None or self.icons == []:
+            icon = ""
+        elif len(self.icons) == 1:
+            icon = self.icons[0]
+        elif len(self.icons) > 1:
+            icon = self.icons[0] if active else self.icons[1]
         return {
             'vol': 100.0 * volume / self.alsa_range[1],
-            'active': self.alsa.get_switch()
+            'active': active,
+            'icon': icon
         }
 
     def up(self):
-        volume = self.alsa.get_volume()
-        volume += 0.04 * self.alsa_range[1]
+        self.mixer.handle_events()
+        volume = self.alsa.get_volume() + 0.04 * self.alsa_range[1]
         if volume >= self.alsa_range[1]:
             volume = self.alsa_range[1]
         self.alsa.set_volume_all(volume)
 
     def down(self):
-        volume = self.alsa.get_volume()
-        volume -= 0.04 * self.alsa_range[1]
+        self.mixer.handle_events()
+        volume = self.alsa.get_volume() - 0.04 * self.alsa_range[1]
         if volume < 0:
             volume = 0
         self.alsa.set_volume_all(volume)
@@ -216,7 +204,8 @@ class Battery(Segment):
                 time = time_to_empty_now
 
         return {
-            'perc': perc
+            'perc': perc,
+            'icon': self.icons[int((perc + 5) / 10)]
         }
 
 
@@ -318,12 +307,15 @@ if __name__ == '__main__':
         exit()
 
     Status([
-        Memory("{perc:2.0f}", icons='󰍛'),
-        CPU("{perc:2.0f}", icons='󰓅'),
-        ALSA("{vol:2.0f},{mute}", icons='󰕾 󰖁', keys={4: "up", 5: "down"}),
-        Backlight("{backlight:2.0f}", icons='󰃟'),
-        Mpd("{status}", icons='󰝚'),
-        Power("power:{power}"),
-        Battery("{perc:2.0f}", icons='󰂎 󰁺 󰁻 󰁼 󰁽 󰁾 󰁿 󰂀 󰂁 󰂂 󰁹'),
-        Date("{date}", icons="󰃰"),
+        Memory("󰍛{perc:2.0f}"),
+        CPU("󰓅{perc:2.0f}"),
+        ALSA("{icon}{vol:2.0f}", icons=['󰕾', '󰖁'], keys={4: "up", 5: "down"}),
+        Backlight("󰃟{backlight:2.0f}"),
+        Mpd("󰝚{status}"),
+        Power("ac:{power}"),
+        Battery(
+            "{icon}{perc:2.0f}",
+            icons=['󰂎', '󰁺', '󰁻', '󰁼', '󰁽', '󰁾', '󰁿', '󰂀', '󰂁', '󰂂', '󰁹']
+        ),
+        Date("󰃰{date}"),
     ]).run()
