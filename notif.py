@@ -14,14 +14,14 @@ class Notification(dbus.service.Object):
         # print(app_icon)
         print(summary)
         print(body)
-        # print(actions)
-        # print(hints)
+        print(actions)
+        print(hints)
         print(expire_timeout)
         return notification_id
 
     @dbus.service.method("org.freedesktop.Notifications", '', 'as')
     def GetCapabilities(self):
-        return ("body")
+        return ("body actions")
 
     @dbus.service.signal('org.freedesktop.Notifications', 'uu')
     def NotificationClosed(self, id_in, reason_in):
@@ -41,7 +41,6 @@ if __name__ == '__main__':
     session_bus = dbus.SessionBus()
     name = dbus.service.BusName("org.freedesktop.Notifications", session_bus)
     nf = Notification(session_bus, '/org/freedesktop/Notifications')
-    print(dir(nf))
 
     context = GLib.MainLoop().get_context()
     while True:
