@@ -13,7 +13,6 @@ import dbus
 import glob
 import os
 import signal
-import sys
 import threading
 import time
 from mpd import MPDClient, base
@@ -27,14 +26,22 @@ class Notification:
         obj_path = "/org/freedesktop/Notifications"
         bus = dbus.SessionBus()
         obj = bus.get_object(bus_name, obj_path)
+
         interface = dbus.Interface(obj, bus_name)
         self.notify_func = interface.get_dbus_method("Notify")
+
+        interface_properties = dbus.Interface(obj, "org.freedesktop.DBus.Properties")
+        self.property_get = interface_properties.get_dbus_method("Get")
 
     def notify(self, summary, body="", icon="", value=None, urgency=1, timeout=3000):
         hints = {"urgency": urgency, "category": "dwm-status"}
         if value:
             hints['value'] = value
         self.notify_func("dwm-status", 0, icon, summary, body, [], hints, timeout)
+
+    def dunst_paused(self):
+        # see dunstctl script from dunst project
+        return self.property_get("org.dunstproject.cmd0", "paused").bit_count()
 
 
 class Status:
@@ -45,29 +52,39 @@ class Status:
         self.stopped = threading.Event()
         self.status = []
         self.threads = []
+        self.segments = segments
         for segment in segments:
             index = len(self.status)
             self.status.append("")
-            t = threading.Thread(target=self.update(index, segment))
+            t = threading.Thread(target=self.loop(index, segment))
             self.threads.append(t)
             t.start()
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
-        # for sig in range(signal.SIGRTMIN, signal.SIGRTMAX + 1):
-        #     signal.signal(sig, stat.handler)
+        for sig in range(signal.SIGRTMIN, signal.SIGRTMAX + 1):
+            signal.signal(sig, self.sighandler)
 
         self.pidfile = '/tmp/status.pid'
         with open(self.pidfile, 'w') as pidfile:
             pidfile.write(str(os.getpid()))
 
+    def sighandler(self, number, frame):
+        index = number - signal.SIGRTMIN - 1
+        if index < len(self.segments):
+            self.update(index, self.segments[index])
+            self.show()
+
     def update(self, i, segment):
+        fmts = segment.run()
+        segstr = segment.fmtstr.format_map(fmts)
+        segstr = chr(i + 1) + f"{segstr}" + chr(15)
+        self.status[i] = segstr
+
+    def loop(self, i, segment):
         def func():
             while not self.stopped.is_set():
                 time.sleep(segment.interval)
-                fmts = segment.run()
-                segstr = segment.fmtstr.format_map(fmts)
-                segstr = chr(i + 1) + f"{segstr}" + chr(15)
-                self.status[i] = segstr
+                self.update(i, segment)
 
         if i >= 14:
             notification.notify("At most 14 segments are allowed")
@@ -94,12 +111,14 @@ class Status:
 
 
 class Segment:
-    def __init__(self, fmt, interval=1, icons=None, color=0, keys={}):
+    def __init__(self, fmtstr, interval=1, icons=[], color=0, keys={}):
         self.interval = interval
-        self.fmtstr = fmt
+        self.fmtstr = fmtstr
         self.icons = icons
-        self.color = 0
-        self.timer = None
+        self.color = color
+
+    def run(self):
+        return {}
 
 
 class ALSA(Segment):
@@ -121,7 +140,7 @@ class ALSA(Segment):
         self.mixer.handle_events()
         volume = self.alsa.get_volume()
         active = self.alsa.get_switch()
-        if self.icons is None or self.icons == []:
+        if self.icons == []:
             icon = ""
         elif len(self.icons) == 1:
             icon = self.icons[0]
@@ -132,20 +151,6 @@ class ALSA(Segment):
             'active': active,
             'icon': icon
         }
-
-    def up(self):
-        self.mixer.handle_events()
-        volume = self.alsa.get_volume() + 0.04 * self.alsa_range[1]
-        if volume >= self.alsa_range[1]:
-            volume = self.alsa_range[1]
-        self.alsa.set_volume_all(volume)
-
-    def down(self):
-        self.mixer.handle_events()
-        volume = self.alsa.get_volume() - 0.04 * self.alsa_range[1]
-        if volume < 0:
-            volume = 0
-        self.alsa.set_volume_all(volume)
 
 
 class Backlight(Segment):
@@ -162,6 +167,10 @@ class Backlight(Segment):
 
 
 class Battery(Segment):
+    def power(self):
+        for status in glob.glob("/sys/class/power_supply/A*/online"):
+            return open(status).readline().startswith('1')
+
     def run(self):
         # not done
         for battery in glob.glob("/sys/class/power_supply/BAT*/uevent"):
@@ -203,9 +212,11 @@ class Battery(Segment):
             elif status == 'discharging' and time_to_empty_now:
                 time = time_to_empty_now
 
+        ac = self.power()
         return {
             'perc': perc,
-            'icon': self.icons[int((perc + 5) / 10)]
+            'power': "on" if ac else "off",
+            'icon': self.icons[1 if ac else 0][int((perc + 5) / 10)]
         }
 
 
@@ -271,51 +282,71 @@ class Mpd(Segment):
                 'song': currentsong.get('file', ''),
                 'time': float(currentsong.get('time', 0)),
                 'elapsed': float(status.get('elapsed', 0)),
-                'status': status.get('state', '')
+                'status': status.get('state', ''),
+                'icon': self.icons[0 if status.get('state', '') == "play" else 1]
             }
-        except base.ConnectionError:
+        except (base.ConnectionError, ConnectionResetError):
             self.connect()
-            return {'song': "", 'time': 0, 'elapsed': 0, 'status': "n/a"}
+            return {'song': "", 'time': 0, 'elapsed': 0, 'status': "n/a", 'icon': self.icons[2]}
 
 
 class Network(Segment):
     def run(self):
-        fmts = {'ethernet': 0, 'wlan': 0, 'level': 0}
+        fmts = {'ethernet': 0, 'wlan': 0, 'level': 0, 'icon': self.icons[0][0]}
         netdir = "/sys/class/net"
         for iface in os.listdir(netdir):
             ipath = os.path.join(netdir, iface, "operstate")
             state = open(ipath).readline().strip()
             if iface.startswith('e') and state == "up":
                 fmts['ethernet'] = 1
+                fmts['icon'] = self.icons[1][0]
             if iface.startswith('w') and state == "up":
                 fmts['wlan'] = 1
+                fmts['icon'] = self.icons[0][0]
+        wireless = "/proc/net/wireless"
+        for line in open(wireless).readlines():
+            line = line.strip()
+            if line.startswith("wl"):
+                level = float(line.split()[3])
+                fmts['level'] = level
+                if level >= -60:
+                    fmts['icon'] = self.icons[0][-1]
+                elif level >= -67:
+                    fmts['icon'] = self.icons[0][-2]
+                elif level >= -75:
+                    fmts['icon'] = self.icons[0][-3]
+                else:
+                    fmts['icon'] = self.icons[0][-4]
+        return fmts
 
 
-class Power(Segment):
+class Dunst(Segment):
     def run(self):
-        for status in glob.glob("/sys/class/power_supply/A*/online"):
-            if open(status).readline().strip() == '1':
-                return {'power': 1}
-            else:
-                return {'power': 0}
+        active = notification.dunst_paused() == 1
+        return {"icon": self.icons[active]}
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     notification = Notification()
-    if len(sys.argv) > 1:
-        notification.notify("Button:{},pos:{}".format(os.getenv("BUTTON"), sys.argv[1]))
-        exit()
 
     Status([
-        Memory("󰍛{perc:2.0f}"),
+        Memory("󰍛{perc:2.0f}", interval=5),
         CPU("󰓅{perc:2.0f}"),
-        ALSA("{icon}{vol:2.0f}", icons=['󰕾', '󰖁'], keys={4: "up", 5: "down"}),
-        Backlight("󰃟{backlight:2.0f}"),
-        Mpd("󰝚{status}"),
-        Power("ac:{power}"),
+        ALSA("{icon}{vol:2.0f}", icons=['󰕾', '󰖁'], interval=5),
+        Backlight("󰃟{backlight:2.0f}", interval=5),
+        Mpd("󰝚{icon}", icons=["󰏤", "󰐊", "󰓛"], interval=5),
         Battery(
             "{icon}{perc:2.0f}",
-            icons=['󰂎', '󰁺', '󰁻', '󰁼', '󰁽', '󰁾', '󰁿', '󰂀', '󰂁', '󰂂', '󰁹']
+            icons=[
+                ['󰂎', '󰁺', '󰁻', '󰁼', '󰁽', '󰁾', '󰁿', '󰂀', '󰂁', '󰂂', '󰁹'],
+                ['󰢟', '󰢜', '󰂆', '󰂇', '󰂈', '󰢝', '󰂉', '󰢞', '󰂊', '󰂋', '󰂅'],
+                ["󱉞"]
+            ],
+            interval=60
         ),
+        Network("{icon}", icons=[["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"], ["󰈀"]]),
         Date("󰃰{date}"),
+        Dunst(" {icon}", icons=["󰂞", "󰂛"], interval=5),
+        Segment(" 󰣖"),
+        Segment(" 󰍉"),
     ]).run()
