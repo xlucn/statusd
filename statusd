@@ -77,7 +77,13 @@ class Status:
     def update(self, i, segment):
         fmts = segment.run()
         segstr = segment.fmtstr.format_map(fmts)
+        # Special character for statuscmd patch
         segstr = chr(i + 1) + f"{segstr}" + chr(15)
+        # Special character for status colors patch
+        if segment.fgcolor != -1:
+            segstr = chr(segment.fgcolor + 16) + segstr
+        if segment.bgcolor != -1:
+            segstr = chr(segment.bgcolor + 24) + segstr
         self.status[i] = segstr
 
     def loop(self, i, segment):
@@ -106,11 +112,12 @@ class Status:
 
 
 class Segment:
-    def __init__(self, fmtstr, interval=1, icons=[], color=0, keys={}):
+    def __init__(self, fmtstr, interval=1, icons=[], fg=-1, bg=-1, keys={}):
         self.interval = interval
         self.fmtstr = fmtstr
         self.icons = icons
-        self.color = color
+        self.fgcolor = fg
+        self.bgcolor = bg
 
     def run(self):
         return {}
@@ -325,11 +332,11 @@ if __name__ == "__main__":
     notification = Notification()
 
     Status([
-        Memory("󰍛{perc:2.0f}", interval=5),
-        CPU("󰓅{perc:2.0f}"),
-        ALSA("{icon}{vol:2.0f}", icons=['󰕾', '󰖁'], interval=5),
-        Backlight("󰃟{backlight:2.0f}", interval=5),
-        Mpd("󰝚{icon}", icons=["󰏤", "󰐊", "󰓛"], interval=5),
+        Memory("󰍛{perc:2.0f}", interval=5, fg=1),
+        CPU("󰓅{perc:2.0f}", fg=2),
+        ALSA("{icon}{vol:2.0f}", icons=['󰕾', '󰖁'], interval=5, fg=3),
+        Backlight("󰃟{backlight:2.0f}", interval=5, fg=4),
+        Mpd("󰝚{icon}", icons=["󰏤", "󰐊", "󰓛"], interval=5, fg=5),
         Battery(
             "{icon}{perc:2.0f}",
             icons=[
@@ -337,11 +344,12 @@ if __name__ == "__main__":
                 ['󰢟', '󰢜', '󰂆', '󰂇', '󰂈', '󰢝', '󰂉', '󰢞', '󰂊', '󰂋', '󰂅'],
                 ["󱉞"]
             ],
-            interval=60
+            interval=60,
+            fg=6
         ),
-        Network("{icon}", icons=[["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"], ["󰈀"]]),
-        Date("󰃰{date}"),
-        Dunst(" {icon}", icons=["󰂞", "󰂛"], interval=5),
-        Segment(" 󰣖"),
-        Segment(" 󰍉"),
+        Network("{icon}", icons=[["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"], ["󰈀"]], fg=1),
+        Date("󰃰{date}", fg=6),
+        Dunst(" {icon}", icons=["󰂞", "󰂛"], interval=5, fg=6),
+        Segment(" 󰣖", fg=6),
+        Segment(" 󰍉", fg=6),
     ]).run()
