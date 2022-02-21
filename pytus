@@ -55,6 +55,10 @@ class Status:
         self.segments = segments
         for segment in segments:
             index = len(self.status)
+            if index >= 14:
+                print("At most 14 segments are allowed")
+                exit(1)
+
             self.status.append("")
             t = threading.Thread(target=self.loop(index, segment))
             self.threads.append(t)
@@ -63,10 +67,6 @@ class Status:
         signal.signal(signal.SIGTERM, self.stop)
         for sig in range(signal.SIGRTMIN, signal.SIGRTMAX + 1):
             signal.signal(sig, self.sighandler)
-
-        self.pidfile = '/tmp/status.pid'
-        with open(self.pidfile, 'w') as pidfile:
-            pidfile.write(str(os.getpid()))
 
     def sighandler(self, number, frame):
         index = number - signal.SIGRTMIN - 1
@@ -83,12 +83,8 @@ class Status:
     def loop(self, i, segment):
         def func():
             while not self.stopped.is_set():
-                time.sleep(segment.interval)
                 self.update(i, segment)
-
-        if i >= 14:
-            notification.notify("At most 14 segments are allowed")
-            exit(1)
+                time.sleep(segment.interval)
         return func
 
     def show(self):
@@ -107,7 +103,6 @@ class Status:
         self.stopped.set()
         for t in self.threads:
             t.join()
-        os.remove(self.pidfile)
 
 
 class Segment:
