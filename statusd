@@ -49,7 +49,7 @@ class Status:
         self.dpy = display.Display()
         self.root = self.dpy.screen().root
 
-        self.stopped = threading.Event()
+        self.event = threading.Event()
         self.status = []
         self.threads = []
         self.segments = segments
@@ -88,9 +88,9 @@ class Status:
 
     def loop(self, i, segment):
         def func():
-            while not self.stopped.is_set():
+            while not self.event.is_set():
                 self.update(i, segment)
-                time.sleep(segment.interval)
+                self.event.wait(segment.interval)
         return func
 
     def show(self):
@@ -99,14 +99,14 @@ class Status:
         self.dpy.sync()
 
     def run(self):
-        while not self.stopped.is_set():
+        while not self.event.is_set():
             curtime = time.time()
             nextsec = int(curtime + 0.5) + 1
-            time.sleep(nextsec - curtime)
+            self.event.wait(nextsec - curtime)
             self.show()
 
     def stop(self, number, frame):
-        self.stopped.set()
+        self.event.set()
         for t in self.threads:
             t.join()
 
@@ -274,7 +274,7 @@ class Mpd(Segment):
         try:
             self.mpdclient.connect("localhost", 6600)
         except ConnectionRefusedError:
-            time.sleep(1)
+            pass
 
     def run(self):
         try:
