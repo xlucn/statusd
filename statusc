@@ -60,4 +60,4 @@ case "$1" in
     #     ;;
 esac
 
-[ -n "$UPD" ] && pkill -RTMIN+"$1" -f "[0-9 ]*python.*pytus"
+[ -n "$UPD" ] && pkill -RTMIN+"$1" -f "[0-9 ]*python.*statusd"
