@@ -6,6 +6,7 @@ FLOATTERM="st -c floating"
 case "$1" in
     1) # Memory
         case "$BUTTON" in
+            1) UPD=1 ;;
             3) $FLOATTERM -e top -o RES ;;
         esac ;;
     2) # CPU
@@ -33,10 +34,13 @@ case "$1" in
             5|backward) mpc seek -20 ;;
         esac ;;
     6) # Battery
-        ;;
+        case "$BUTTON" in
+            1) UPD=1 ;;
+        esac ;;
     7) # Network
         case "$BUTTON" in
-            1) ;;
+            1) UPD=1 ;;
+            3) $FLOATTERM -e iwctl ;;
         esac ;;
     8) # Date
         ;;

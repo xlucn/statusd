@@ -15,6 +15,8 @@ import os
 import signal
 import threading
 import time
+from subprocess import run, DEVNULL
+
 from mpd import MPDClient, base
 from pyalsa import alsamixer
 from Xlib import display
@@ -34,10 +36,10 @@ class Notification:
         self.property_get = interface_properties.get_dbus_method("Get")
 
     def notify(self, summary, body="", icon="", value=None, urgency=1, timeout=3000):
-        hints = {"urgency": urgency, "category": "dwm-status"}
+        hints = {"urgency": urgency, "x-canonical-private-synchronous": "statusd"}
         if value:
-            hints['value'] = value
-        self.notify_func("dwm-status", 0, icon, summary, body, [], hints, timeout)
+            body += "[" + "=" * (value // 4) + ">" + " " * (25 - value // 4) + "]"
+        self.notify_func("statusd", 0, icon, summary, body, [], hints, timeout)
 
     def dunst_paused(self):
         # see dunstctl script from dunst project
@@ -45,37 +47,36 @@ class Notification:
 
 
 class Status:
-    def __init__(self, segments):
-        self.dpy = display.Display()
-        self.root = self.dpy.screen().root
-
+    def __init__(self, segments, dwm=True, tmux=None):
+        self.dwm = dwm
+        self.tmux = tmux
+        self.segments = segments
         self.event = threading.Event()
         self.status = []
         self.threads = []
-        self.segments = segments
         for segment in segments:
             index = len(self.status)
             if index >= 14:
-                print("At most 14 segments are allowed")
+                notification.notify("At most 14 segments are allowed")
                 exit(1)
 
             self.status.append("")
-            t = threading.Thread(target=self.loop(index, segment))
+            t = threading.Thread(target=self.loop(index))
             self.threads.append(t)
             t.start()
+
+        if dwm:
+            self.dpy = display.Display()
+            self.root = self.dpy.screen().root
+
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
         for sig in range(signal.SIGRTMIN, signal.SIGRTMAX + 1):
             signal.signal(sig, self.sighandler)
 
-    def sighandler(self, number, frame):
-        index = number - signal.SIGRTMIN - 1
-        if index < len(self.segments):
-            self.update(index, self.segments[index])
-            self.show()
-
-    def update(self, i, segment):
-        fmts = segment.run()
+    def update(self, i, notify=False):
+        segment = self.segments[i]
+        fmts = segment.run(notify=notify)
         segstr = segment.fmtstr.format_map(fmts)
         # Special character for statuscmd patch
         segstr = chr(i + 1) + f"{segstr}" + chr(15)
@@ -86,19 +87,32 @@ class Status:
             segstr = chr(segment.bgcolor + 24) + segstr
         self.status[i] = segstr
 
-    def loop(self, i, segment):
-        def func():
+    def sighandler(self, number, frame):
+        index = number - signal.SIGRTMIN - 1
+        if index < len(self.segments):
+            self.update(index, notify=True)
+            self.show()
+
+    def loop(self, i):
+        def loopfunc():
             while not self.event.is_set():
-                self.update(i, segment)
-                self.event.wait(segment.interval)
-        return func
+                self.update(i)
+                self.event.wait(self.segments[i].interval)
+        return loopfunc
 
     def show(self):
-        status_text = ' ' + ' '.join(self.status) + ' '
-        self.root.set_wm_name(status_text.encode())
-        self.dpy.sync()
+        status_text = ''.join(self.status)
+        if self.dwm:
+            self.root.set_wm_name(status_text.encode())
+            self.dpy.sync()
 
-    def run(self):
+        if self.tmux:
+            tmux_socket = os.path.join("/tmp/tmux-{}".format(os.getuid()), self.tmux)
+            sessions = run(['tmux', '-S', tmux_socket, 'ls'], stderr=DEVNULL, stdout=DEVNULL)
+            if sessions.returncode == 0:
+                run(['tmux', '-S', tmux_socket, 'set', 'status-right', status_text])
+
+    def start(self):
         while not self.event.is_set():
             curtime = time.time()
             nextsec = int(curtime + 0.5) + 1
@@ -119,7 +133,7 @@ class Segment:
         self.fgcolor = fg
         self.bgcolor = bg
 
-    def run(self):
+    def run(self, notify=False):
         return {}
 
 
@@ -138,92 +152,90 @@ class ALSA(Segment):
         self.alsa = alsamixer.Element(self.mixer, 'Master')
         self.alsa_range = self.alsa.get_volume_range()
 
-    def run(self):
+    def run(self, notify=False):
         self.mixer.handle_events()
         volume = self.alsa.get_volume()
         active = self.alsa.get_switch()
+        vol = 100.0 * volume / self.alsa_range[1]
         if self.icons == []:
             icon = ""
         elif len(self.icons) == 1:
             icon = self.icons[0]
         elif len(self.icons) > 1:
             icon = self.icons[0] if active else self.icons[1]
+
+        if notify:
+            notification.notify(
+                f"Volume: {vol:02.0f}",
+                icon="audio-volume-high-symbolic",
+                value=int(vol)
+            )
+
         return {
-            'vol': 100.0 * volume / self.alsa_range[1],
+            'vol': vol,
             'active': active,
             'icon': icon
         }
 
 
 class Backlight(Segment):
-    def run(self):
+    def run(self, notify=False):
         for light in glob.glob("/sys/class/backlight/*"):
             try:
                 current = open(light + "/brightness").read().strip()
                 maximum = open(light + "/max_brightness").read().strip()
-                return {
-                    "backlight": 100.0 * float(current) / float(maximum)
-                }
+                backlight = 100.0 * float(current) / float(maximum)
             except (FileNotFoundError, ZeroDivisionError):
                 continue
 
+        if notify:
+            notification.notify(
+                f"Brightness: {backlight:02.0f}",
+                icon="display-brightness-symbolic",
+                value=int(backlight)
+            )
+
+        return {"backlight": backlight}
+
 
 class Battery(Segment):
-    def power(self):
-        for status in glob.glob("/sys/class/power_supply/A*/online"):
-            return open(status).readline().startswith('1')
+    def run(self, notify=False):
+        fmts = {}
+        for battery in glob.glob("/sys/class/power_supply/*/uevent"):
+            uevent_list = [line.split('=') for line in open(battery)]
+            uevent = {pair[0][13:]: pair[1].strip() for pair in uevent_list}
+            for k in uevent:
+                if uevent[k].isdigit():
+                    uevent[k] = int(uevent[k])
 
-    def run(self):
-        # not done
-        for battery in glob.glob("/sys/class/power_supply/BAT*/uevent"):
-            uevent = {k: v.strip() for k, v in [line.split('=') for line in open(battery)]}
-
-            status = uevent.get('POWER_SUPPLY_STATUS').lower()
-            charge_full = uevent.get('POWER_SUPPLY_CHARGE_FULL')
-            charge_now = uevent.get('POWER_SUPPLY_CHARGE_NOW')
-            energy_full = uevent.get('POWER_SUPPLY_ENERGY_FULL')
-            energy_now = uevent.get('POWER_SUPPLY_ENERGY_NOW')
-            capacity = uevent.get('POWER_SUPPLY_CAPACITY')
-            voltage_now = uevent.get('POWER_SUPPLY_VOLTAGE_NOW')
-            current_now = uevent.get('POWER_SUPPLY_CURRENT_NOW')
-            power_now = uevent.get('POWER_SUPPLY_POWER_NOW')
-            time_to_empty_now = uevent.get('POWER_SUPPLY_TIME_TO_EMPTY_NOW')
-            time_to_full_now = uevent.get('POWER_SUPPLY_TIME_TO_FULL_NOW')
-
-            if capacity:
-                perc = float(capacity)
-            elif charge_now and charge_full and current_now:
-                perc = float(charge_now) / float(charge_full)
-            elif energy_now and energy_full and \
-                    (power_now or current_now and voltage_now):
-                perc = float(energy_now) / float(energy_full)
-            else:
-                perc = 0
-
-            if power_now:
-                power = float(power_now) / 10**6
-            elif voltage_now and current_now:
-                power = float(current_now) * float(voltage_now) / 10**12
-            elif current_now:
-                current = float(current_now) / 10**6
-            if status == 'charging':
-                if time_to_full_now:
-                    time = time_to_full_now
+            if uevent['TYPE'] == 'Mains':
+                fmts['ac'] = uevent.get('ONLINE')
+            elif uevent['TYPE'] == 'Battery':
+                if uevent.get('CAPACITY'):
+                    fmts['perc'] = uevent['CAPACITY']
+                elif uevent.get('CHARGE_FULL') and uevent.get('CHARGE_FULL'):
+                    fmts['perc'] = uevent['CHARGE_FULL'] / uevent['CHARGE_FULL']
+                elif uevent.get('ENERGY_NOW') and uevent.get('ENERGY_FULL'):
+                    fmts['perc'] = uevent['ENERGY_NOW'] / uevent['ENERGY_FULL']
                 else:
-                    time = 0
-            elif status == 'discharging' and time_to_empty_now:
-                time = time_to_empty_now
+                    fmts['perc'] = -1
 
-        ac = self.power()
-        return {
-            'perc': perc,
-            'power': "on" if ac else "off",
-            'icon': self.icons[1 if ac else 0][int((perc + 5) / 10)]
-        }
+                if uevent.get('ENERGY_NOW') and uevent.get('POWER_NOW'):
+                    fmts['time'] = uevent['ENERGY_NOW'] / uevent['POWER_NOW']
+                elif uevent.get('CURRENT_NOW') and uevent.get('CHARGE_NOW'):
+                    fmts['time'] = uevent['CHARGE_NOW'] / uevent['CURRENT_NOW']
+                else:
+                    fmts['time'] = -1
+
+        if notify:
+            notification.notify(f"Battery: {fmts['perc']:02.0f}%\nTime: {fmts['time']:.1f}h")
+
+        fmts['icon'] = self.icons[fmts.get('ac')][int((fmts['perc'] + 5) / 10)]
+        return fmts
 
 
 class CPU(Segment):
-    def run(self):
+    def run(self, notify=False):
         line = open("/proc/stat").readline()
         cols = [float(c) for c in line.split()[1:]]
         idle = cols[3] + cols[4]
@@ -246,21 +258,40 @@ class CPU(Segment):
 
 
 class Date(Segment):
-    def run(self):
+    def run(self, notify=False):
         return {'date': time.strftime("%a %b %d %H:%M:%S")}
 
 
 class Memory(Segment):
-    def run(self):
+    def human_readable(self, n):
+        units = ['KB', "MB", "GB"]
+        for unit in units:
+            if n < 1024:
+                return f"{n:6.1f}{unit}"
+            else:
+                n /= 1024
+        return "Too big"
+
+    def run(self, notify=False):
         meminfo = [line.split(':') for line in open('/proc/meminfo')]
         mem = {k: int(v.strip().split()[0]) for k, v in meminfo}
+
+        used = mem['MemTotal'] - mem['MemAvailable']
+        total = mem['MemTotal']
+        perc = 100 * (used / total)
+        swap_used = mem['SwapTotal'] - mem['SwapFree']
+        swap_total = mem['SwapTotal']
+        swap_perc = 100 * (swap_used / swap_total)
+
+        if notify:
+            notification.notify("Memory: {}/{} ({:.1f}%)\nSwap:   {}/{} ({:.1f}%)".format(
+                self.human_readable(used), self.human_readable(total), perc,
+                self.human_readable(swap_used), self.human_readable(swap_total), swap_perc
+            ))
+
         return {
-            'used': mem['MemTotal'] - mem['MemAvailable'],
-            'total': mem['MemTotal'],
-            'perc': 100 * (mem['MemTotal'] - mem['MemAvailable']) / mem['MemTotal'],
-            'swap_used': mem['SwapTotal'] - mem['SwapFree'],
-            'swap_total': mem['SwapTotal'],
-            'swap_perc': 100 * (mem['SwapTotal'] - mem['SwapFree']) / mem['SwapTotal']
+            'used': used, 'total': total, 'perc': perc,
+            'swap_used': swap_used, 'swap_total': swap_total, 'swap_perc': swap_perc
         }
 
 
@@ -276,7 +307,7 @@ class Mpd(Segment):
         except ConnectionRefusedError:
             pass
 
-    def run(self):
+    def run(self, notify=False):
         try:
             currentsong = self.mpdclient.currentsong()
             status = self.mpdclient.status()
@@ -293,7 +324,7 @@ class Mpd(Segment):
 
 
 class Network(Segment):
-    def run(self):
+    def run(self, notify=False):
         fmts = {'ethernet': 0, 'wlan': 0, 'level': 0, 'icon': self.icons[0][0]}
         netdir = "/sys/class/net"
         for iface in os.listdir(netdir):
@@ -311,19 +342,17 @@ class Network(Segment):
             if line.startswith("wl"):
                 level = float(line.split()[3])
                 fmts['level'] = level
-                if level >= -60:
-                    fmts['icon'] = self.icons[0][-1]
-                elif level >= -67:
-                    fmts['icon'] = self.icons[0][-2]
-                elif level >= -75:
-                    fmts['icon'] = self.icons[0][-3]
-                else:
-                    fmts['icon'] = self.icons[0][-4]
+                # level4 >= -60 > level3 >= -67.5 > level2 >= -75 > level1
+                ilevel = int((level + 80) / 7.5)
+                fmts['icon'] = self.icons[0][min(max(ilevel, 0), 4)]
+
+        if notify and fmts['wlan']:
+            notification.notify("Wifi level: {}".format(fmts['level']))
         return fmts
 
 
 class Dunst(Segment):
-    def run(self):
+    def run(self, notify=False):
         active = notification.dunst_paused() == 1
         return {"icon": self.icons[active]}
 
@@ -332,24 +361,24 @@ if __name__ == "__main__":
     notification = Notification()
 
     Status([
-        Memory("󰍛{perc:2.0f}", interval=5, fg=1),
-        CPU("󰓅{perc:2.0f}", fg=2),
-        ALSA("{icon}{vol:2.0f}", icons=['󰕾', '󰖁'], interval=5, fg=3),
-        Backlight("󰃟{backlight:2.0f}", interval=5, fg=4),
-        Mpd("󰝚{icon}", icons=["󰏤", "󰐊", "󰓛"], interval=5, fg=5),
+        Memory(" 󰍛 {perc:02.0f} ", interval=5, fg=1),
+        CPU(" 󰓅 {perc:02.0f} ", fg=2),
+        ALSA(" {icon} {vol:02.0f} ", icons=['󰕾', '󰖁'], interval=5, fg=3),
+        Backlight(" 󰃟 {backlight:02.0f} ", interval=5, fg=4),
+        Mpd(" 󰝚 {icon} ", icons=["󰏤", "󰐊", "󰓛"], interval=5, fg=5),
         Battery(
-            "{icon}{perc:2.0f}",
+            " {icon} {perc:02.0f} ",
             icons=[
                 ['󰂎', '󰁺', '󰁻', '󰁼', '󰁽', '󰁾', '󰁿', '󰂀', '󰂁', '󰂂', '󰁹'],
                 ['󰢟', '󰢜', '󰂆', '󰂇', '󰂈', '󰢝', '󰂉', '󰢞', '󰂊', '󰂋', '󰂅'],
                 ["󱉞"]
             ],
-            interval=60,
+            interval=5,
             fg=6
         ),
-        Network("{icon}", icons=[["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"], ["󰈀"]], fg=1),
-        Date("󰃰{date}", fg=6),
-        Dunst(" {icon}", icons=["󰂞", "󰂛"], interval=5, fg=6),
-        Segment(" 󰣖", fg=6),
-        Segment(" 󰍉", fg=6),
-    ]).run()
+        Network(" {icon} ", icons=[["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"], ["󰈀"]], fg=1),
+        Date(" 󰃰 {date} ", fg=6),
+        Dunst(" {icon} ", icons=["󰂞", "󰂛"], interval=5, fg=6),
+        Segment(" 󰣖 ", fg=6),
+        Segment(" 󰍉 ", fg=6),
+    ], dwm=True, tmux="default").start()
