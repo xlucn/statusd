@@ -273,8 +273,8 @@ class Memory(Segment):
         return "Too big"
 
     def run(self, notify=False):
-        meminfo = [line.split(':') for line in open('/proc/meminfo')]
-        mem = {k: int(v.strip().split()[0]) for k, v in meminfo}
+        meminfo = [line.split()[:2] for line in open('/proc/meminfo')]
+        mem = {k[:-1]: int(v) for k, v in meminfo}
 
         used = mem['MemTotal'] - mem['MemAvailable']
         total = mem['MemTotal']
