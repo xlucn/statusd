@@ -235,7 +235,7 @@ class Battery(Segment):
 
 
 class CPU(Segment):
-    def run(self, notify=False):
+    def get_perc(self):
         line = open("/proc/stat").readline()
         cols = [float(c) for c in line.split()[1:]]
         idle = cols[3] + cols[4]
@@ -250,7 +250,21 @@ class CPU(Segment):
 
         self.idle_old = idle
         self.total_old = total
+
+        return idle, total, perc
+
+    def get_freq(self):
+        freq = []
+        for line in open("/proc/cpuinfo"):
+            if line[:7] == "cpu MHz":
+                freq.append(float(line.split()[-1]))
+        return sum(freq) / len(freq) / 1000
+
+    def run(self, notify=False):
+        idle, total, perc = self.get_perc()
+        freq = self.get_freq()
         return {
+            'freq': freq,
             'cpu_idle': idle,
             'cpu_total': total,
             'perc': perc
@@ -362,7 +376,7 @@ if __name__ == "__main__":
 
     Status([
         Memory(" 󰍛 {perc:02.0f} ", interval=5, fg=1),
-        CPU(" 󰓅 {perc:02.0f} ", fg=2),
+        CPU(" 󰓅 {perc:02.0f}, {freq:0.02f}GHz ", fg=2),
         ALSA(" {icon} {vol:02.0f} ", icons=['󰕾', '󰖁'], interval=5, fg=3),
         Backlight(" 󰃟 {backlight:02.0f} ", interval=5, fg=4),
         Mpd(" 󰝚 {icon} ", icons=["󰏤", "󰐊", "󰓛"], interval=5, fg=5),
