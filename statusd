@@ -11,11 +11,12 @@ See https://github.com/OliverLew/dwm
 
 import dbus
 import glob
+import imaplib
 import os
 import signal
 import threading
 import time
-from subprocess import run, DEVNULL
+from subprocess import run, DEVNULL, PIPE
 
 from mpd import MPDClient, base
 from pyalsa import alsamixer
@@ -144,8 +145,8 @@ class ALSA(Segment):
         one glyph, or
         two glyphs, for unmuted and muted state
     """
-    def __init__(self, *args, **kargs):
-        super().__init__(*args, **kargs)
+    def __init__(self, fmtstr, **kargs):
+        super().__init__(fmtstr, **kargs)
         self.mixer = alsamixer.Mixer()
         self.mixer.attach()
         self.mixer.load()
@@ -276,6 +277,35 @@ class Date(Segment):
         return {'date': time.strftime("%a %b %d %H:%M:%S")}
 
 
+class IMAP(Segment):
+    def __init__(self, fmtstr, email, **kargs):
+        super().__init__(fmtstr, **kargs)
+        self.email = email
+
+        default_server = "imap." + email.split("@")[1]
+        self.server = kargs.get("server", default_server)
+
+        default_port = imaplib.IMAP4_SSL_PORT
+        self.port = kargs.get("port", default_port)
+
+        self.password = kargs.get("password")
+        if self.password is None:
+            pass_cmd = ['pass', 'show', f'mail/{email}']
+            res = run(pass_cmd, stdout=PIPE, stderr=PIPE)
+            if res.returncode != 0:
+                print(res.stderr.decode().strip())
+                exit(1)
+            self.password = res.stdout.decode().strip()
+
+    def run(self, notify=False):
+        with imaplib.IMAP4_SSL(self.server, self.port) as m:
+            m.login(self.email, self.password)
+            m.select()
+            uids = m.search(None, 'UNSEEN')[1][0].decode().split()
+            m.close()
+            return {"unread": len(uids), "icon": self.icons[len(uids) == 0]}
+
+
 class Memory(Segment):
     def human_readable(self, n):
         units = ['KB', "MB", "GB"]
@@ -310,8 +340,8 @@ class Memory(Segment):
 
 
 class Mpd(Segment):
-    def __init__(self, *args, **kargs):
-        super().__init__(*args, **kargs)
+    def __init__(self, fmtstr, **kargs):
+        super().__init__(fmtstr, **kargs)
         self.mpdclient = MPDClient()
         self.connect()
 
@@ -379,6 +409,7 @@ if __name__ == "__main__":
         CPU(" 󰓅 {perc:02.0f}, {freq:0.02f}GHz ", fg=2),
         ALSA(" {icon} {vol:02.0f} ", icons=['󰕾', '󰖁'], interval=5, fg=3),
         Backlight(" 󰃟 {backlight:02.0f} ", interval=5, fg=4),
+        IMAP(" {icon} {unread} ", "oliver_lew@outlook.com", icons=["󰇮", "󰇰"], interval=60),
         Mpd(" 󰝚 {icon} ", icons=["󰏤", "󰐊", "󰓛"], interval=5, fg=5),
         Battery(
             " {icon} {perc:02.0f} ",
