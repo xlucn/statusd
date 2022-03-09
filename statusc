@@ -49,21 +49,21 @@ case "$1" in
     9) # Date
         ;;
     a) # Notification
-        case "${BUTTON-1}" in
+        case "$BUTTON" in
             1) dunstctl set-paused toggle; UPD=1 ;;
             3) dunstctl close-all ;;
             4) dunstctl history-pop ;;
             5) dunstctl close ;;
         esac ;;
     b) # Command
-        case "${BUTTON-1}" in
+        case "$BUTTON" in
             1) rofi -show run ;;
         esac ;;
     c) # Application
-        case "${BUTTON-1}" in
+        case "$BUTTON" in
             1) rofi -theme launcher -show drun ;;
             3) xmenu-apps ;;
         esac ;;
 esac
 
-[ -n "$UPD" ] && pkill -RTMIN+"$1" -f "[0-9 ]*python.*statusd"
+[ -n "$UPD" ] && pkill -RTMIN+$((0x$1)) -f "[0-9 ]*python.*statusd"
