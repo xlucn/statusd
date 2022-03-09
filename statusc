@@ -62,7 +62,7 @@ case "$1" in
     c) # Application
         case "$BUTTON" in
             1) rofi -theme launcher -show drun ;;
-            3) xmenu-apps ;;
+            3) xdg-xmenu -i Papirus-Dark | xmenu | xargs -I {} sh -c "{}" ;;
         esac ;;
 esac
 

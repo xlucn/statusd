@@ -277,6 +277,11 @@ class Date(Segment):
         return {'date': time.strftime("%a %b %d %H:%M:%S")}
 
 
+class Dunst(Segment):
+    def run(self, notify=False):
+        return {"icon": self.icons[notification.dunst_paused()]}
+
+
 class IMAP(Segment):
     def __init__(self, fmtstr, email, **kargs):
         super().__init__(fmtstr, **kargs)
@@ -368,6 +373,7 @@ class Mpd(Segment):
 
 
 class Network(Segment):
+    # TODO: speed from /sys/class/net/<if>/statictics/{rx,tx}_bytes
     def run(self, notify=False):
         fmts = {'ethernet': 0, 'wlan': 0, 'level': 0, 'icon': self.icons[0][0]}
         netdir = "/sys/class/net"
@@ -386,7 +392,7 @@ class Network(Segment):
             if line.startswith("wl"):
                 level = float(line.split()[3])
                 fmts['level'] = level
-                # level4 >= -60 > level3 >= -67.5 > level2 >= -75 > level1
+                # level-4 >= -60 > level-3 >= -67.5 > level-2 >= -75 > level-1
                 ilevel = int((level + 80) / 7.5)
                 fmts['icon'] = self.icons[0][min(max(ilevel, 0), 4)]
 
@@ -395,18 +401,12 @@ class Network(Segment):
         return fmts
 
 
-class Dunst(Segment):
-    def run(self, notify=False):
-        active = notification.dunst_paused() == 1
-        return {"icon": self.icons[active]}
-
-
 if __name__ == "__main__":
     notification = Notification()
 
     Status([
         Memory(" 󰍛 {perc:02.0f} ", interval=5, fg=1),
-        CPU(" 󰓅 {perc:02.0f}, {freq:0.02f}GHz ", fg=2),
+        CPU(" 󰓅 {perc:02.0f}, {freq:0.1f}GHz ", fg=2),
         ALSA(" {icon} {vol:02.0f} ", icons=['󰕾', '󰖁'], interval=5, fg=3),
         Backlight(" 󰃟 {backlight:02.0f} ", interval=5, fg=4),
         IMAP(" {icon} {unread} ", "oliver_lew@outlook.com", icons=["󰇮", "󰇰"], interval=60),
@@ -426,4 +426,4 @@ if __name__ == "__main__":
         Dunst(" {icon} ", icons=["󰂞", "󰂛"], interval=5, fg=6),
         Segment(" 󰣖 ", fg=6),
         Segment(" 󰍉 ", fg=6),
-    ], dwm=True, tmux="default").start()
+    ], dwm=True, tmux="fbtmux").start()
