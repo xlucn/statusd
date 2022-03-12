@@ -78,6 +78,9 @@ class Status:
     def update(self, i, notify=False):
         segment = self.segments[i]
         fmts = segment.run(notify=notify)
+        if fmts is None:
+            return
+
         segstr = segment.fmtstr.format_map(fmts)
         # Special character for statuscmd patch
         segstr = chr(i + 1) + f"{segstr}" + chr(15)
@@ -369,7 +372,6 @@ class Mpd(Segment):
             }
         except (base.ConnectionError, ConnectionResetError):
             self.connect()
-            return {'song': "", 'time': 0, 'elapsed': 0, 'status': "n/a", 'icon': self.icons[2]}
 
 
 class Network(Segment):
