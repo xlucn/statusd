@@ -351,11 +351,13 @@ class Mpd(Segment):
     def __init__(self, fmtstr, **kargs):
         super().__init__(fmtstr, **kargs)
         self.mpdclient = MPDClient()
+        self.host = kargs.get("host", "localhost")
+        self.port = kargs.get("port", 6600)
         self.connect()
 
     def connect(self):
         try:
-            self.mpdclient.connect("localhost", 6600)
+            self.mpdclient.connect(self.host, self.port)
         except ConnectionRefusedError:
             pass
 
