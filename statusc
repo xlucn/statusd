@@ -64,6 +64,7 @@ case "$1" in
             1) rofi -theme launcher -show drun ;;
             3) xdg-xmenu -i Papirus-Dark | xmenu | xargs -I {} sh -c "{}" ;;
         esac ;;
+    kill) pkill -f "python.*statusd"; exit ;;
 esac
 
 [ -n "$UPD" ] && pkill -RTMIN+$((0x$1)) -f "[0-9 ]*python.*statusd"
