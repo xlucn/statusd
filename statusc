@@ -79,7 +79,7 @@ case "$1" in
     c) # Application
         case "$BUTTON" in
             1) rofi -theme launcher -show drun ;;
-            3) xdg-xmenu -i Papirus-Dark | xmenu | xargs -I {} sh -c "{}" ;;
+            3) xdg-xmenu -s 48 ;;
         esac ;;
     kill) pkill -f "python.*statusd"; exit ;;
     -h|--help|*) usage; exit ;;
