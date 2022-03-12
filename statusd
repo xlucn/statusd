@@ -85,9 +85,9 @@ class Status:
         # Special character for statuscmd patch
         segstr = chr(i + 1) + f"{segstr}" + chr(15)
         # Special character for status colors patch
-        if segment.fgcolor != -1:
+        if segment.fgcolor:
             segstr = chr(segment.fgcolor + 16) + segstr
-        if segment.bgcolor != -1:
+        if segment.bgcolor:
             segstr = chr(segment.bgcolor + 24) + segstr
         self.status[i] = segstr
 
@@ -130,7 +130,7 @@ class Status:
 
 
 class Segment:
-    def __init__(self, fmtstr, interval=1, icons=[], fg=-1, bg=-1, keys={}):
+    def __init__(self, fmtstr, interval=1, icons=[], fg=None, bg=None, keys={}):
         self.interval = interval
         self.fmtstr = fmtstr
         self.icons = icons
