@@ -182,6 +182,28 @@ class ALSA(Segment):
         }
 
 
+class AMDGPU(Segment):
+    def __init__(self, fmtstr, **kargs):
+        super().__init__(fmtstr, **kargs)
+        radeon_cmd = ["radeontop", "-d", "-", "-t", "40"]
+        self.process = Popen(radeon_cmd, stdout=PIPE, stderr=DEVNULL)
+
+    def run(self, notify=False):
+        line = self.process.stdout.readline().decode().split(",")
+        if len(line) <= 2:
+            return
+
+        fmts = {}
+        fmts['gpu'] = float(line[1].split()[1].rstrip("%"))
+        fmts['vram_perc'] = float(line[12].split()[1].rstrip("%"))
+        fmts['vram'] = float(line[12].split()[2].rstrip("mb"))
+        fmts['vram_total'] = fmts['vram'] / fmts['vram_perc']
+        fmts['clock_perc'] = float(line[14].split()[1].rstrip("%"))
+        fmts['clock'] = float(line[14].split()[2].rstrip("ghz"))
+        fmts['clock_total'] = fmts['clock'] / fmts['clock_perc']
+        return fmts
+
+
 class Backlight(Segment):
     def run(self, notify=False):
         for light in glob.glob("/sys/class/backlight/*"):
@@ -410,7 +432,8 @@ if __name__ == "__main__":
 
     Status([
         Memory(" 󰍛 {perc:02.0f} ", interval=5, fg=1),
-        CPU(" 󰓅 {perc:02.0f}, {freq:0.1f}GHz ", fg=2),
+        CPU(" 󰓅 {perc:02.0f}, {freq:0.1f}GHz "),
+        AMDGPU(" 󰨜 {vram_perc:.1f} 󰎓 {gpu:02.0f}, {clock:.1f}GHz ", fg=2),
         ALSA(" {icon} {vol:02.0f} ", icons=['󰕾', '󰖁'], interval=5, fg=3),
         Backlight(" 󰃟 {backlight:02.0f} ", interval=5, fg=4),
         IMAP(" {icon} {unread} ", "oliver_lew@outlook.com", icons=["󰇮", "󰇰"], interval=60),
