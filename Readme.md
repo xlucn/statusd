@@ -4,7 +4,7 @@ Feature:
 - Support the click and color patches in my dwm build.
 - Every block runs on their own thread, so no blocking.
 - All written with pure python, without (so faster than) external shell scripts.
-- Responds (update status) instantaneously to actions.
+- Status updates instantaneously to actions (using the client script `statusc`).
 
 Requirements:
 - Status text programs:
@@ -14,21 +14,22 @@ Requirements:
   - python-pyalsa
   - python-mpd2
   - python-xlib
+  - dbus-python
 - Notification daemon:
   - dunst
 - Email unread count:
   - pass for password
 
 Current blocks/segments:
-- ALSA
-- Backlight
+- ALSA (Volume)
+- Backlight (Screen brightness)
 - Battery
 - CPU
 - Date
-- Dunst
-- IMAP
+- Dunst (Notification)
+- IMAP (Email)
 - Memory
-- Mpd
+- Mpd (Music player daemon)
 - Network
 
 Look at the initialization code to see how it is setup.
