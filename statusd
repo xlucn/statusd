@@ -57,9 +57,6 @@ class Status:
         self.threads = []
         for segment in segments:
             index = len(self.status)
-            if index >= 14:
-                notification.notify("At most 14 segments are allowed")
-                exit(1)
 
             self.status.append("")
             t = threading.Thread(target=self.loop(index))
