@@ -9,7 +9,6 @@ Dependency:
 See https://github.com/OliverLew/dwm
 """
 
-import dbus
 import glob
 import imaplib
 import os
@@ -18,6 +17,7 @@ import threading
 import time
 from subprocess import run, DEVNULL, PIPE, Popen
 
+import dbus
 from mpd import MPDClient, base
 from pyalsa import alsamixer
 from Xlib import display
@@ -79,6 +79,7 @@ class Status:
             return
 
         segstr = segment.fmtstr.format_map(fmts)
+        # TODO: only add those for dwm text
         # Special character for statuscmd patch
         segstr = chr(i + 1) + f"{segstr}" + chr(15)
         # Special character for status colors patch
@@ -98,6 +99,7 @@ class Status:
         def loopfunc():
             while not self.event.is_set():
                 self.update(i)
+                # user event's wait so that it quits instantly
                 self.event.wait(self.segments[i].interval)
         return loopfunc
 
@@ -340,36 +342,41 @@ class IMAP(Segment):
 
 
 class Memory(Segment):
-    def human_readable(self, n):
+    def h(self, n):
         units = ['KB', "MB", "GB"]
         for unit in units:
             if n < 1024:
-                return f"{n:6.1f}{unit}"
+                return f"{n:.1f}{unit}"
             else:
                 n /= 1024
-        return "Too big"
+        return f"{n:.1f}TB"
 
     def run(self, notify=False):
         meminfo = [line.split()[:2] for line in open('/proc/meminfo')]
         mem = {k[:-1]: int(v) for k, v in meminfo}
 
-        used = mem['MemTotal'] - mem['MemAvailable']
         total = mem['MemTotal']
+        used = total - mem['MemAvailable']
         perc = 100 * (used / total)
-        swap_used = mem['SwapTotal'] - mem['SwapFree']
         swap_total = mem['SwapTotal']
+        swap_used = swap_total - mem['SwapFree']
         swap_perc = 100 * (swap_used / swap_total)
 
-        if notify:
-            notification.notify("Memory: {}/{} ({:.1f}%)\nSwap:   {}/{} ({:.1f}%)".format(
-                self.human_readable(used), self.human_readable(total), perc,
-                self.human_readable(swap_used), self.human_readable(swap_total), swap_perc
-            ))
-
-        return {
-            'used': used, 'total': total, 'perc': perc,
-            'swap_used': swap_used, 'swap_total': swap_total, 'swap_perc': swap_perc
+        fmts = {
+            'used': self.h(used),
+            'total': self.h(total),
+            'perc': perc,
+            'swap_used': self.h(swap_used),
+            'swap_total': self.h(swap_total),
+            'swap_perc': swap_perc
         }
+
+        if notify:
+            memstat = "Memory: {used:>8s}/{total:>8s} ({perc:.1f}%)"
+            swapstat = "Swap:   {swap_used:>8s}/{swap_total:>8s} ({swap_perc:.1f}%)"
+            notification.notify("\n".join([memstat, swapstat]).format_map(fmts))
+
+        return fmts
 
 
 class Mpd(Segment):
@@ -403,6 +410,7 @@ class Mpd(Segment):
 
 class Network(Segment):
     # TODO: speed from /sys/class/net/<if>/statictics/{rx,tx}_bytes
+    # TODO: SSID from iwd
     def run(self, notify=False):
         fmts = {'ethernet': 0, 'wlan': 0, 'level': 0, 'icon': self.icons[0][0]}
         netdir = "/sys/class/net"
@@ -432,28 +440,20 @@ class Network(Segment):
 
 if __name__ == "__main__":
     notification = Notification()
-
-    Status([
+    status_daemon = Status([
         Memory(" 󰍛 {perc:02.0f} ", interval=5, fg=1),
         CPU(" 󰓅 {perc:02.0f}, {freq:0.1f}GHz "),
-        AMDGPU(" 󰨜 {vram_perc:.1f} 󰎓 {gpu:02.0f}, {clock:.1f}GHz ", fg=2),
+        AMDGPU(" 󰨜 {vram_perc:.1f}  󰎓 {gpu:02.0f}, {clock:.1f}GHz ", fg=2),
         ALSA(" {icon} {vol:02.0f} ", icons=['󰕾', '󰖁'], interval=5, fg=3),
         Backlight(" 󰃟 {backlight:02.0f} ", interval=5, fg=4),
-        IMAP(" {icon} {unread} ", "oliver_lew@outlook.com", icons=["󰇮", "󰇰"], interval=60),
+        # IMAP(" {icon} {unread} ", "oliver_lew@outlook.com", icons=["󰇮", "󰇰"], interval=60),
         Mpd(" 󰝚 {icon} ", icons=["󰏤", "󰐊", "󰓛"], interval=5, fg=5),
-        Battery(
-            " {icon} {perc:02.0f} ",
-            icons=[
-                ['󰂎', '󰁺', '󰁻', '󰁼', '󰁽', '󰁾', '󰁿', '󰂀', '󰂁', '󰂂', '󰁹'],
-                ['󰢟', '󰢜', '󰂆', '󰂇', '󰂈', '󰢝', '󰂉', '󰢞', '󰂊', '󰂋', '󰂅'],
-                ["󱉞"]
-            ],
-            interval=5,
-            fg=6
-        ),
+        Battery(" {icon} {perc:02.0f} ", interval=5, fg=6,
+                icons=['󰂎󰁺󰁻󰁼󰁽󰁾󰁿󰂀󰂁󰂂󰁹', '󰢟󰢜󰂆󰂇󰂈󰢝󰂉󰢞󰂊󰂋󰂅', "󱉞"]),
         Network(" {icon} ", icons=[["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"], ["󰈀"]], fg=1),
         Date(" 󰃰 {date} ", fg=6),
         Dunst(" {icon} ", icons=["󰂞", "󰂛"], interval=5, fg=6),
         Segment(" 󰣖 ", fg=6),
         Segment(" 󰍉 ", fg=6),
-    ], dwm=True, tmux="fbtmux").start()
+    ], dwm=True, tmux="fbtmux")
+    status_daemon.start()
