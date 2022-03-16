@@ -182,7 +182,7 @@ class ALSA(Segment):
 class AMDGPU(Segment):
     def __init__(self, fmtstr, **kargs):
         super().__init__(fmtstr, **kargs)
-        radeon_cmd = ["radeontop", "-d", "-", "-t", "40"]
+        radeon_cmd = ["radeontop", "-d", "-", "-t", "40", "-i", str(self.interval)]
         self.process = Popen(radeon_cmd, stdout=PIPE, stderr=DEVNULL)
 
     def run(self, notify=False):
@@ -194,10 +194,16 @@ class AMDGPU(Segment):
         fmts['gpu'] = float(line[1].split()[1].rstrip("%"))
         fmts['vram_perc'] = float(line[12].split()[1].rstrip("%"))
         fmts['vram'] = float(line[12].split()[2].rstrip("mb"))
-        fmts['vram_total'] = fmts['vram'] / fmts['vram_perc']
+        fmts['vram_total'] = fmts['vram'] / fmts['vram_perc'] * 100
         fmts['clock_perc'] = float(line[14].split()[1].rstrip("%"))
         fmts['clock'] = float(line[14].split()[2].rstrip("ghz"))
-        fmts['clock_total'] = fmts['clock'] / fmts['clock_perc']
+        fmts['clock_total'] = fmts['clock'] / fmts['clock_perc'] * 100
+
+        if notify:
+            notification.notify(
+                "vram:  {vram:5.1f} MB  / {vram_total:5.1f} MB\n".format_map(fmts) +
+                "clock: {clock:5.2f} GHz / {clock_total:5.2f} GHz".format_map(fmts)
+            )
         return fmts
 
 
