@@ -16,7 +16,7 @@ import os
 import signal
 import threading
 import time
-from subprocess import run, DEVNULL, PIPE
+from subprocess import run, DEVNULL, PIPE, Popen
 
 from mpd import MPDClient, base
 from pyalsa import alsamixer
