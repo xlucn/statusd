@@ -7,29 +7,31 @@ Feature:
 - Status updates instantaneously to actions (using the client script `statusc`).
 
 Requirements:
-- Status text programs:
+- Linux. A lot of the status info depends on a Linux file system.
+- Status text programs (optional):
   - dwm
   - tmux
-- Python modules:
-  - python-pyalsa
-  - python-mpd2
-  - python-xlib
-  - dbus-python
 - Notification daemon:
   - dunst
-- Email unread count:
+- Email:
   - pass for password
+- Python modules:
+  - python-xlib for dwm status bar
+  - python-pyalsa for ALSA
+  - python-mpd2 for Mpd
+  - dbus-python for Dunst and showing notification
 
 Current blocks/segments:
 - ALSA (Volume)
+- AMDGPU
 - Backlight (Screen brightness)
 - Battery
 - CPU
 - Date
-- Dunst (Notification)
-- IMAP (Email)
+- Dunst (Notification status)
+- IMAP (Email count)
 - Memory
 - Mpd (Music player daemon)
-- Network
+- Network (Wifi status, strength, speed)
 
 Look at the initialization code to see how it is setup.
