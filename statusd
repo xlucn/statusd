@@ -350,12 +350,15 @@ class IMAP(Segment):
             self.password = res.stdout.decode().strip()
 
     def run(self, notify=False):
-        with imaplib.IMAP4_SSL(self.server, self.port) as m:
-            m.login(self.email, self.password)
-            m.select()
-            uids = m.search(None, 'UNSEEN')[1][0].decode().split()
-            m.close()
-            return {"unread": len(uids), "icon": self.icons[len(uids) == 0]}
+        try:
+            with imaplib.IMAP4_SSL(self.server, self.port) as m:
+                m.login(self.email, self.password)
+                m.select()
+                uids = m.search(None, 'UNSEEN')[1][0].decode().split()
+                m.close()
+                return {"unread": len(uids), "icon": self.icons[len(uids) == 0]}
+        except (OSError, imaplib.IMAP4.abort, imaplib.IMAP4.error):
+            pass
 
 
 class Memory(Segment):
