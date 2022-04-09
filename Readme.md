@@ -3,8 +3,8 @@ Very basic and **personal** status daemon and client for dwm and tmux. If you ar
 Feature:
 - Support the click and color patches in my dwm build.
 - Every block runs on their own thread, so no blocking.
-- All written with pure python, without (so faster than) external shell scripts.
-- Status updates instantaneously to actions (using the client script `statusc`).
+- All written with (almost) pure python, faster than shell scripts.
+- Status updates instantaneously to actions (by signaling, see `statusc`).
 
 Requirements:
 - Linux. A lot of the status info depends on a Linux file system.
@@ -13,8 +13,8 @@ Requirements:
   - tmux
 - Notification daemon:
   - dunst
-- Email:
-  - pass for password
+- Email password:
+  - pass
 - Python modules:
   - python-xlib for dwm status bar
   - python-pyalsa for ALSA
