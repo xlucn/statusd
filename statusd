@@ -259,21 +259,14 @@ class Battery(Segment):
             if uevent['TYPE'] == 'Mains':
                 fmts['ac'] = uevent.get('ONLINE')
             elif uevent['TYPE'] == 'Battery':
-                if uevent.get('CAPACITY'):
-                    fmts['perc'] = uevent['CAPACITY']
-                elif uevent.get('CHARGE_FULL') and uevent.get('CHARGE_FULL'):
-                    fmts['perc'] = uevent['CHARGE_FULL'] / uevent['CHARGE_FULL']
-                elif uevent.get('ENERGY_NOW') and uevent.get('ENERGY_FULL'):
-                    fmts['perc'] = uevent['ENERGY_NOW'] / uevent['ENERGY_FULL']
-                else:
-                    fmts['perc'] = -1
+                fmts['perc'] = uevent['CAPACITY']
 
                 if uevent.get('ENERGY_NOW') and uevent.get('POWER_NOW'):
                     fmts['time'] = uevent['ENERGY_NOW'] / uevent['POWER_NOW']
                 elif uevent.get('CURRENT_NOW') and uevent.get('CHARGE_NOW'):
                     fmts['time'] = uevent['CHARGE_NOW'] / uevent['CURRENT_NOW']
                 else:
-                    fmts['time'] = -1
+                    fmts['time'] = 0
 
         if notify:
             notification.notify(f"Battery: {fmts['perc']:02.0f}%\nTime: {fmts['time']:.1f}h")
@@ -283,18 +276,20 @@ class Battery(Segment):
 
 
 class CPU(Segment):
+    def __init__(self, fmtstr, **kargs):
+        super().__init__(fmtstr, **kargs)
+        self.idle_old = 0
+        self.total_old = 0
+
     def get_perc(self):
         line = open("/proc/stat").readline()
         cols = [float(c) for c in line.split()[1:]]
         idle = cols[3] + cols[4]
         total = sum(cols)
 
-        try:
-            diff_idle = idle - self.idle_old
-            diff_total = total - self.total_old
-            perc = (1 - diff_idle / diff_total) * 100
-        except (ZeroDivisionError, AttributeError):
-            perc = 0
+        diff_idle = idle - self.idle_old
+        diff_total = total - self.total_old
+        perc = (1 - diff_idle / diff_total) * 100
 
         self.idle_old = idle
         self.total_old = total
@@ -304,7 +299,7 @@ class CPU(Segment):
     def get_freq(self):
         freq = []
         for line in open("/proc/cpuinfo"):
-            if line[:7] == "cpu MHz":
+            if line.startswith("cpu MHz"):
                 freq.append(float(line.split()[-1]))
         return sum(freq) / len(freq) / 1000
 
@@ -313,8 +308,8 @@ class CPU(Segment):
         freq = self.get_freq()
         return {
             'freq': freq,
-            'cpu_idle': idle,
-            'cpu_total': total,
+            'idle': idle,
+            'total': total,
             'perc': perc
         }
 
@@ -410,7 +405,7 @@ class Mpd(Segment):
     def connect(self):
         try:
             self.mpdclient.connect(self.host, self.port)
-        except ConnectionRefusedError:
+        except ConnectionRefusedError:  # probably mpd not started
             pass
 
     def run(self, notify=False):
@@ -424,7 +419,7 @@ class Mpd(Segment):
                 'status': status.get('state', ''),
                 'icon': self.icons[0 if status.get('state', '') == "play" else 1]
             }
-        except (base.ConnectionError, ConnectionResetError):
+        except (base.ConnectionError, ConnectionResetError):  # mpd stopped
             self.connect()
 
 
