@@ -184,27 +184,44 @@ class ALSA(Segment):
 class AMDGPU(Segment):
     def __init__(self, fmtstr, **kargs):
         super().__init__(fmtstr, **kargs)
-        radeon_cmd = ["radeontop", "-d", "-", "-t", "40", "-i", str(self.interval)]
-        self.process = Popen(radeon_cmd, stdout=PIPE, stderr=DEVNULL)
+        self.gpu_clocks = []
+        self.vram_clocks = []
+        self.samples = kargs.get('samples', 20)
+        self.smooth_time = kargs.get('smooth_time', 3)
+        self.dir = "/sys/class/drm/card{}/device/".format(kargs.get('card', 0))
+
+    def get(self, filename):
+        path = os.path.join(self.dir, filename)
+        if os.path.exists(path):
+            return open(path).read().strip()
+
+    def get_clock(self, filename):
+        contents = self.get(filename).split('\n')
+        line = next(filter(lambda x: x.strip().endswith('*'), contents))
+        if line:
+            return float(line.split()[1].removesuffix('Mhz'))
 
     def run(self, notify=False):
-        line = self.process.stdout.readline().decode().split(",")
-        if len(line) <= 2:
-            return
-
-        fmts = {}
-        fmts['gpu'] = float(line[1].split()[1].rstrip("%"))
-        fmts['vram_perc'] = float(line[12].split()[1].rstrip("%"))
-        fmts['vram'] = float(line[12].split()[2].rstrip("mb"))
-        fmts['vram_total'] = fmts['vram'] / fmts['vram_perc'] * 100
-        fmts['clock_perc'] = float(line[14].split()[1].rstrip("%"))
-        fmts['clock'] = float(line[14].split()[2].rstrip("ghz"))
-        fmts['clock_total'] = fmts['clock'] / fmts['clock_perc'] * 100
+        for i in range(20):
+            self.gpu_clocks.append(self.get_clock('pp_dpm_sclk'))
+            self.vram_clocks.append(self.get_clock('pp_dpm_mclk'))
+            time.sleep(1.0 / self.samples)
+            # self.event.wait(1.0 / self.samples)
+        self.gpu_clocks = self.gpu_clocks[-self.samples*self.smooth_time:]
+        self.vram_clocks = self.vram_clocks[-self.samples*self.smooth_time:]
+        fmts = {
+            'gpu': float(self.get('gpu_busy_percent')),
+            'gpufreq': sum(self.gpu_clocks) / len(self.gpu_clocks) / 1000,
+            'vram': float(self.get('mem_info_vram_used')),
+            'vram_total': float(self.get('mem_info_vram_total')),
+            'vramfreq': sum(self.vram_clocks) / len(self.vram_clocks) / 1000
+        }
+        fmts['vram_perc'] = 100 * fmts['vram'] / fmts['vram_total']
 
         if notify:
             notification.notify(
                 "vram:  {vram:5.1f} MB  / {vram_total:5.1f} MB\n".format_map(fmts) +
-                "clock: {clock:5.2f} GHz / {clock_total:5.2f} GHz".format_map(fmts)
+                "clock: {gpufreq:5.2f} GHz, {vramfreq:5.2f} GHz".format_map(fmts)
             )
         return fmts
 
@@ -443,7 +460,7 @@ if __name__ == "__main__":
     status_daemon = Status([
         Memory(" 󰍛 {perc:02.0f} ", interval=5, fg=1),
         CPU(" 󰓅 {perc:02.0f}, {freq:0.1f}GHz "),
-        AMDGPU(" 󰨜 {vram_perc:.1f}  󰎓 {gpu:02.0f}, {clock:.1f}GHz ", fg=2),
+        AMDGPU(" 󰨜 {vram_perc:.1f}, {vramfreq:.2f}GHz  󰎓 {gpu:02.0f}, {gpufreq:.2f}GHz ", fg=2),
         ALSA(" {icon} {vol:02.0f} ", icons=['󰕾', '󰖁'], interval=5, fg=3),
         Backlight(" 󰃟 {backlight:02.0f} ", interval=5, fg=4),
         # IMAP(" {icon} {unread} ", "oliver_lew@outlook.com", icons=["󰇮", "󰇰"], interval=60),
