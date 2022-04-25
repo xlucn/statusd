@@ -15,7 +15,7 @@ import os
 import signal
 import threading
 import time
-from subprocess import run, DEVNULL, PIPE, Popen
+from subprocess import run, DEVNULL, PIPE
 
 import dbus
 from mpd import MPDClient, base
