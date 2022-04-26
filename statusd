@@ -38,7 +38,7 @@ class Notification:
 
     def notify(self, summary, body="", icon="", value=None, urgency=1, timeout=3000):
         hints = {"urgency": urgency, "x-canonical-private-synchronous": "statusd"}
-        if value:
+        if value is not None:
             body += "[" + "=" * (value // 4) + ">" + " " * (25 - value // 4) + "]"
         self.notify_func("statusd", 0, icon, summary, body, [], hints, timeout)
 
