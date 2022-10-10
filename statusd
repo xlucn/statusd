@@ -39,7 +39,7 @@ class Notification:
     def notify(self, summary, body="", icon="", value=None, urgency=1, timeout=3000):
         hints = {"urgency": urgency, "x-canonical-private-synchronous": "statusd"}
         if value is not None:
-            body += "[" + "=" * (value // 4) + ">" + " " * (25 - value // 4) + "]"
+            body += "[" + "=" * (value // 2) + ">" + " " * (50 - value // 2) + "]"
         self.notify_func("statusd", 0, icon, summary, body, [], hints, timeout)
 
     def dunst_paused(self):
