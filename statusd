@@ -13,6 +13,7 @@ import glob
 import imaplib
 import os
 import signal
+import socket
 import threading
 import time
 from subprocess import run, DEVNULL, PIPE
@@ -49,13 +50,22 @@ class Notification:
 
 class Status:
     def __init__(self, segments, dwm=True, tmux=None, padding=0):
+        self.socket_file = "/tmp/statusd.socket"
+        self.socket_bufsize = 32
+
         self.dwm = dwm
         self.tmux = tmux
         self.padding = padding
         self.segments = segments
+
         self.event = threading.Event()
         self.status = []
         self.threads = []
+
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.socket.bind(self.socket_file)
+        self.socket.listen()
+
         notify = Notification()
 
         for segment in segments:
@@ -67,6 +77,10 @@ class Status:
             t = threading.Thread(target=self.loop(index))
             self.threads.append(t)
             t.start()
+
+        socket_thread = threading.Thread(target=self.listen)
+        self.threads.append(socket_thread)
+        socket_thread.start()
 
         if dwm:
             self.dpy = display.Display()
@@ -109,6 +123,15 @@ class Status:
                 self.event.wait(self.segments[i].interval)
         return loopfunc
 
+    def listen(self):
+        while not self.event.is_set():
+            conn, addr = self.socket.accept()
+            with conn:
+                while True:
+                    data = conn.recv(self.socket_bufsize)
+                    if not data:
+                        break
+                    print(data.decode())
     def show(self):
         status_text = ''.join(self.status)
         if self.dwm:
@@ -130,6 +153,7 @@ class Status:
 
     def stop(self, number, frame):
         self.event.set()
+        self.socket.close()
         for t in self.threads:
             t.join()
 
