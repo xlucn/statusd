@@ -89,7 +89,7 @@ case "$1" in
             1) rofi -theme launcher -show drun ;;
             3) xdg-xmenu -s 48 ;;
         esac ;;
-    kill) pkill -f "python.*statusd"; exit ;;
+    kill) pkill -9 -f "python.*statusd"; exit ;;
     -h|--help|*) usage; exit ;;
 esac
 
