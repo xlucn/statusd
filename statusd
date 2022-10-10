@@ -56,7 +56,9 @@ class Status:
         self.event = threading.Event()
         self.status = []
         self.threads = []
+        notify = Notification()
         for segment in segments:
+            segment.notification = notify
             index = len(self.status)
 
             self.status.append("")
@@ -171,7 +173,7 @@ class ALSA(Segment):
             icon = self.icons[0] if active else self.icons[1]
 
         if notify:
-            notification.notify(
+            self.notification.notify(
                 f"Volume: {vol:02.0f}",
                 icon="audio-volume-high-symbolic",
                 value=int(vol)
@@ -222,7 +224,7 @@ class AMDGPU(Segment):
         fmts['vram_perc'] = 100 * fmts['vram'] / fmts['vram_total']
 
         if notify:
-            notification.notify(
+            self.notification.notify(
                 "vram:  {vram:5.1f} MB  / {vram_total:5.1f} MB\n".format_map(fmts) +
                 "clock: {gpufreq:5.2f} GHz, {vramfreq:5.2f} GHz".format_map(fmts)
             )
@@ -240,7 +242,7 @@ class Backlight(Segment):
                 continue
 
         if notify:
-            notification.notify(
+            self.notification.notify(
                 f"Brightness: {backlight:02.0f}",
                 icon="display-brightness-symbolic",
                 value=int(backlight)
@@ -272,7 +274,7 @@ class Battery(Segment):
                     fmts['time'] = 0
 
         if notify:
-            notification.notify(f"Battery: {fmts['perc']:02.0f}%\nTime: {fmts['time']:.1f}h")
+            self.notification.notify(f"Battery: {fmts['perc']:02.0f}%\nTime: {fmts['time']:.1f}h")
 
         fmts['icon'] = self.icons[fmts.get('ac')][int((fmts['perc'] + 5) / 10)]
         return fmts
@@ -324,7 +326,7 @@ class Date(Segment):
 
 class Dunst(Segment):
     def run(self, notify=False):
-        return {"icon": self.icons[notification.dunst_paused()]}
+        return {"icon": self.icons[self.notification.dunst_paused()]}
 
 
 class IMAP(Segment):
@@ -392,7 +394,7 @@ class Memory(Segment):
         if notify:
             memstat = "Memory: {used:>8s}/{total:>8s} ({perc:.1f}%)"
             swapstat = "Swap:   {swap_used:>8s}/{swap_total:>8s} ({swap_perc:.1f}%)"
-            notification.notify("\n".join([memstat, swapstat]).format_map(fmts))
+            self.notification.notify("\n".join([memstat, swapstat]).format_map(fmts))
 
         return fmts
 
@@ -452,12 +454,11 @@ class Network(Segment):
                 fmts['icon'] = self.icons[0][min(max(ilevel, 0), 4)]
 
         if notify and fmts['wlan']:
-            notification.notify("Wifi level: {}".format(fmts['level']))
+            self.notification.notify("Wifi level: {}".format(fmts['level']))
         return fmts
 
 
 if __name__ == "__main__":
-    notification = Notification()
     Status([
         Memory("󰍛 {perc:02.0f}", interval=5, fg=1),
         CPU("󰓅 {perc:02.0f}, {freq:0.1f}GHz"),
