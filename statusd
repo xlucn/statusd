@@ -57,7 +57,9 @@ class Status:
         self.status = []
         self.threads = []
         notify = Notification()
+
         for segment in segments:
+            segment.event = self.event
             segment.notification = notify
             index = len(self.status)
 
@@ -104,7 +106,6 @@ class Status:
         def loopfunc():
             while not self.event.is_set():
                 self.update(i)
-                # user event's wait so that it quits instantly
                 self.event.wait(self.segments[i].interval)
         return loopfunc
 
@@ -210,8 +211,7 @@ class AMDGPU(Segment):
         for i in range(self.samples):
             self.gpu_clocks.append(self.get_clock('pp_dpm_sclk'))
             self.vram_clocks.append(self.get_clock('pp_dpm_mclk'))
-            time.sleep(1.0 / self.samples)
-            # self.event.wait(1.0 / self.samples)
+            self.event.wait(1.0 / self.samples)
         self.gpu_clocks = self.gpu_clocks[-self.samples*self.smooth_time:]
         self.vram_clocks = self.vram_clocks[-self.samples*self.smooth_time:]
         fmts = {
