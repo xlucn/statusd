@@ -354,7 +354,7 @@ class Dunst(Segment):
 
 
 class IMAP(Segment):
-    def __init__(self, fmtstr, email, **kargs):
+    def __init__(self, fmtstr, email, passwd=None, passcmd=None, **kargs):
         super().__init__(fmtstr, **kargs)
         self.email = email
 
@@ -364,14 +364,18 @@ class IMAP(Segment):
         default_port = imaplib.IMAP4_SSL_PORT
         self.port = kargs.get("port", default_port)
 
-        self.password = kargs.get("password")
-        if self.password is None:
-            pass_cmd = ['pass', 'show', f'mail/{email}']
-            res = run(pass_cmd, stdout=PIPE, stderr=PIPE)
-            if res.returncode != 0:
-                print(res.stderr.decode().strip())
+        if passwd:
+            self.password = passwd
+        elif passcmd:
+            p = os.popen(passcmd.format(email=email))
+            self.password = p.readline().strip()
+            returncode = p.close()
+            if returncode:
+                print(f"command exits with return value {returncode}")
                 exit(1)
-            self.password = res.stdout.decode().strip()
+        else:
+            print("You have to either specify email password or provide a command")
+            exit(1)
 
     def run(self, notify=False):
         try:
@@ -489,7 +493,8 @@ if __name__ == "__main__":
         AMDGPU("󰨜 {vram_perc:.1f} 󰎓 {gpu:02.0f}, {gpufreq:.2f}GHz", fg=2),
         ALSA("{icon} {vol:02.0f}", icons='󰕾󰖁', interval=5, fg=3),
         Backlight("󰃟 {backlight:02.0f}", interval=5, fg=4),
-        # IMAP("{icon} {unread}", "oliver_lew@outlook.com", icons=["󰇮", "󰇰"], interval=60),
+        # IMAP("{icon} {unread}", icons=["󰇮", "󰇰"], interval=60,
+        # email="oliver_lew@outlook.com", passcmd="pass show mail/{email}"),
         Mpd("󰝚 {icon}", icons="󰏤󰐊󰓛", interval=5, fg=5),
         Battery("{icon} {perc:02.0f}", interval=5, fg=6,
                 icons=['󰂎󰁺󰁻󰁼󰁽󰁾󰁿󰂀󰂁󰂂󰁹', '󰢟󰢜󰂆󰂇󰂈󰢝󰂉󰢞󰂊󰂋󰂅', "󱉞"]),
