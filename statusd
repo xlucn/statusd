@@ -135,6 +135,7 @@ class Status:
                     print(data.decode())
     def show(self):
         status_text = ''.join(self.status)
+
         if self.dwm:
             self.root.set_wm_name(status_text.encode())
             self.dpy.sync()
@@ -164,7 +165,7 @@ class Status:
 
 
 class Segment:
-    def __init__(self, fmtstr, interval=1, icons=[], fg=None, bg=None, keys={}):
+    def __init__(self, fmtstr, interval=1, icons=[], fg=None, bg=None):
         self.interval = interval
         self.fmtstr = fmtstr
         self.icons = icons
@@ -182,6 +183,7 @@ class ALSA(Segment):
         one glyph, or
         two glyphs, for unmuted and muted state
     """
+
     def __init__(self, fmtstr, **kargs):
         super().__init__(fmtstr, **kargs)
         self.mixer = alsamixer.Mixer()
@@ -491,7 +493,7 @@ class Network(Segment):
         return fmts
 
 
-if __name__ == "__main__":
+def main():
     Status([
         Memory("󰍛 {perc:02.0f}", interval=5, fg=1),
         CPU("󰓅 {perc:02.0f}, {freq:0.1f}GHz"),
@@ -509,3 +511,7 @@ if __name__ == "__main__":
         Segment("󰣖", fg=6),
         Segment("󰍉", fg=6),
     ], padding=1, dwm=True, tmux="fbtmux").start()
+
+
+if __name__ == "__main__":
+    main()
