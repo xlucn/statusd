@@ -61,28 +61,24 @@ class Status:
         self.segments = segments
 
         self.event = threading.Event()
-        self.status = []
+        self.status = ["" for _ in range(len(segments))]
         self.threads = []
 
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.socket.bind(self.socket_file)
         self.socket.listen()
 
-        notify = Notification()
+        self.notify = Notification()
 
-        for segment in segments:
+        for index, segment in enumerate(segments):
             segment.event = self.event
-            segment.notification = notify
-            index = len(self.status)
+            segment.notification = self.notify
 
-            self.status.append("")
             t = threading.Thread(target=self.loop(index))
             self.threads.append(t)
-            t.start()
 
         socket_thread = threading.Thread(target=self.listen)
         self.threads.append(socket_thread)
-        socket_thread.start()
 
         if dwm:
             self.dpy = display.Display()
@@ -151,6 +147,9 @@ class Status:
                 pass
 
     def start(self):
+        for t in self.threads:
+            t.start()
+
         while not self.event.is_set():
             curtime = time.time()
             nextsec = int(curtime + 0.5) + 1
