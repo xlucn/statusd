@@ -16,10 +16,11 @@ import signal
 import socket
 import threading
 import time
-from subprocess import run, DEVNULL, PIPE
 
 import dbus
 from mpd import MPDClient, base
+from libtmux.server import Server as TmuxServer
+from libtmux.exc import LibTmuxException
 from pyalsa import alsamixer
 from Xlib import display
 
@@ -49,12 +50,13 @@ class Notification:
 
 
 class Status:
-    def __init__(self, segments, dwm=True, tmux=None, padding=0):
+    def __init__(self, segments, dwm=True, tmux=False, tmux_socket=None, padding=0):
         self.socket_file = "/tmp/statusd.socket"
         self.socket_bufsize = 32
 
         self.dwm = dwm
         self.tmux = tmux
+        self.tmux_socket = tmux_socket
         self.padding = padding
         self.segments = segments
 
@@ -85,6 +87,9 @@ class Status:
         if dwm:
             self.dpy = display.Display()
             self.root = self.dpy.screen().root
+
+        if tmux:
+            self.tmuxserver = TmuxServer(socket_name=self.tmux_socket)
 
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
@@ -139,10 +144,11 @@ class Status:
             self.dpy.sync()
 
         if self.tmux:
-            tmux_socket = os.path.join("/tmp/tmux-{}".format(os.getuid()), self.tmux)
-            sessions = run(['tmux', '-S', tmux_socket, 'ls'], stderr=DEVNULL, stdout=DEVNULL)
-            if sessions.returncode == 0:
-                run(['tmux', '-S', tmux_socket, 'set', 'status-right', status_text])
+            try:
+                for session in self.tmuxserver.attached_sessions:
+                    session.set_option("status-right", status_text)
+            except LibTmuxException:  # probably no tmux running
+                pass
 
     def start(self):
         while not self.event.is_set():
