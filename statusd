@@ -510,7 +510,7 @@ def main():
         Dunst("{icon}", icons="󰂞󰂛", interval=5, fg=6),
         Segment("󰣖", fg=6),
         Segment("󰍉", fg=6),
-    ], padding=1, dwm=True, tmux="fbtmux").start()
+    ], padding=1, dwm=True, tmux=True, tmux_socket="fbtmux").start()
 
 
 if __name__ == "__main__":
