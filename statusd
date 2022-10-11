@@ -126,13 +126,18 @@ class Status:
 
     def listen(self):
         while not self.event.is_set():
-            conn, addr = self.socket.accept()
+            try:  # catch exception here, not recv
+                conn, addr = self.socket.accept()
+            except OSError:
+                break
+
             with conn:
-                while True:
-                    data = conn.recv(self.socket_bufsize)
-                    if not data:
-                        break
-                    print(data.decode())
+                data = conn.recv(self.socket_bufsize)
+                if not data:
+                    break
+
+                seg, action = data.decode().split(",")
+                print(f"segment #{seg}, action:{action}")
     def show(self):
         status_text = ''.join(self.status)
 
@@ -159,6 +164,7 @@ class Status:
 
     def stop(self, number, frame):
         self.event.set()
+        self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
         for t in self.threads:
             t.join()
