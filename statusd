@@ -239,7 +239,7 @@ class AMDGPU(Segment):
         self.vram_clocks = []
         self.samples = kargs.get('samples', 20)
         self.smooth_time = kargs.get('smooth_time', 3)
-        self.dir = "/sys/class/drm/card{}/device/".format(kargs.get('card', 0))
+        self.dir = glob.glob("/sys/class/drm/card?/device/")[0]
 
     def get(self, filename):
         path = os.path.join(self.dir, filename)
