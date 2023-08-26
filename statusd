@@ -61,7 +61,7 @@ class Status:
         self.segments = segments
 
         self.event = threading.Event()
-        self.status = ["" for _ in range(len(segments))]
+        self.status = [""] * len(segments)
         self.threads = []
 
         if os.path.exists(self.fifo):
@@ -156,9 +156,7 @@ class Status:
             t.start()
 
         while not self.event.is_set():
-            curtime = time.time()
-            nextsec = int(curtime + 0.5) + 1
-            self.event.wait(nextsec - curtime)
+            self.event.wait(1)
             self.show()
 
     def stop(self, number, frame):
@@ -370,7 +368,7 @@ class IMAP(Segment):
         super().__init__(fmtstr, **kargs)
         self.email = email
 
-        default_server = "imap." + email.split("@")[1]
+        default_server = "imap." + email.partition("@")[2]
         self.server = kargs.get("server", default_server)
 
         default_port = imaplib.IMAP4_SSL_PORT
