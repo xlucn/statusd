@@ -18,9 +18,8 @@ import threading
 import time
 
 import dbus
+import libtmux
 from mpd import MPDClient, base
-from libtmux.server import Server as TmuxServer
-from libtmux.exc import LibTmuxException
 from pyalsa import alsamixer
 from Xlib import display
 
@@ -86,7 +85,7 @@ class Status:
             self.root = self.dpy.screen().root
 
         if tmux:
-            self.tmuxserver = TmuxServer(socket_name=self.tmux_socket)
+            self.tmuxserver = libtmux.server.Server(socket_name=self.tmux_socket)
 
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
@@ -157,11 +156,8 @@ class Status:
             self.dpy.sync()
 
         if self.tmux:
-            try:
-                for session in self.tmuxserver.attached_sessions:
-                    session.set_option("status-right", status_text)
-            except LibTmuxException:  # probably no tmux running
-                pass
+            for session in self.tmuxserver.sessions:
+                session.set_option("status-right", status_text)
 
     def start(self):
         for t in self.threads:
