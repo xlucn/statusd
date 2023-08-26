@@ -30,31 +30,22 @@ case "$1" in
         case "$BUTTON" in
             3) $FLOATTERM -e top -o %CPU ;;
         esac ;;
-    3)
-        case "$BUTTON" in
-            1) UPD=1 ;;
-            3) $FLOATTERM -e radeontop ;;
-        esac ;;
-    4|vol) # ALSA
-        [ "$1" = vol ] && signal=4 && BUTTON=$2
+    3|vol) # ALSA
+        [ "$1" = vol ] && signal=3 && BUTTON=$2
         case "$BUTTON" in
             1|mute) amixer -q sset Master toggle; UPD=1 ;;
             3)      $FLOATTERM -e alsamixer ;;
             4|up)   amixer -q sset Master 4%+; UPD=1 ;;
             5|down) amixer -q sset Master 4%-; UPD=1 ;;
         esac ;;
-    5|light) # Backlight
-        [ "$1" = light ] && signal=5 && BUTTON=$2
+    4|light) # Backlight
+        [ "$1" = light ] && signal=4 && BUTTON=$2
         case "$BUTTON" in
             4|up)   brightnessctl -c backlight -q s 4%+ 2> /dev/null; UPD=1 ;;
             5|down) brightnessctl -c backlight -q s 4%- 2> /dev/null; UPD=1 ;;
         esac ;;
-    6)
-        case "$BUTTON" in
-            3) $FLOATTERM mutt ;;
-        esac ;;
-    7|mpd) # Mpd
-        [ "$1" = mpd ] && signal=7 && BUTTON=$2
+    5|mpd) # Mpd
+        [ "$1" = mpd ] && signal=5 && BUTTON=$2
         case "$BUTTON" in
             1|pause)    mpc -q toggle; UPD=1 ;;
             2|stop)     mpc -q stop; UPD=1 ;;
@@ -62,29 +53,29 @@ case "$1" in
             4|forward)  mpc -q seek +20 ;;
             5|backward) mpc -q seek -20 ;;
         esac ;;
-    8) # Battery
+    6) # Battery
         case "$BUTTON" in
             1) UPD=1 ;;
         esac ;;
-    9) # Network
+    7) # Network
         case "$BUTTON" in
             1) UPD=1 ;;
             3) $FLOATTERM -e iwctl ;;
         esac ;;
-    a) # Date
+    8) # Date
         ;;
-    b) # Notification
+    9) # Notification
         case "$BUTTON" in
             1) dunstctl set-paused toggle; UPD=1 ;;
             3) dunstctl close-all ;;
             4) dunstctl history-pop ;;
             5) dunstctl close ;;
         esac ;;
-    c) # Command
+    a) # Command
         case "$BUTTON" in
             1) rofi -show run ;;
         esac ;;
-    d) # Application
+    b) # Application
         case "$BUTTON" in
             1) rofi -theme launcher -show drun ;;
             3) xdg-xmenu -s 48 ;;

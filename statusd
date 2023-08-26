@@ -497,22 +497,48 @@ class Network(Segment):
 
 def main():
     Status([
-        Memory("󰍛 {perc:02.0f}", interval=5, fg=1),
-        CPU("󰓅 {perc:02.0f}, {freq:0.1f}GHz"),
-        AMDGPU("󰨜 {vram_perc:.1f} 󰎓 {gpu:02.0f}, {gpufreq:.2f}GHz", fg=2),
-        ALSA("{icon} {vol:02.0f}", icons='󰕾󰖁', interval=5, fg=3),
-        Backlight("󰃟 {backlight:02.0f}", interval=5, fg=4),
-        # IMAP("{icon} {unread}", icons=["󰇮", "󰇰"], interval=60,
-        # email="oliver_lew@outlook.com", passcmd="pass show mail/{email}"),
-        Mpd("󰝚 {icon}", icons="󰏤󰐊󰓛", interval=5, fg=5),
-        Battery("{icon} {perc:02.0f}", interval=5, fg=6,
-                icons=['󰂎󰁺󰁻󰁼󰁽󰁾󰁿󰂀󰂁󰂂󰁹', '󰢟󰢜󰂆󰂇󰂈󰢝󰂉󰢞󰂊󰂋󰂅', "󱉞"]),
-        Network("{icon}", icons=["󰤯󰤟󰤢󰤥󰤨", "󰈀"], fg=1),
-        Date("󰃰 {date}", fg=6),
-        Dunst("{icon}", icons="󰂞󰂛", interval=5, fg=6),
-        Segment("󰣖", fg=6),
-        Segment("󰍉", fg=6),
-    ], padding=1, dwm=True, tmux=True, tmux_socket="fbtmux").start()
+        Memory(
+            "󰍛 {perc:02.0f}", interval=5, fg=1
+        ),
+        CPU(
+            "󰓅 {perc:02.0f}, {freq:0.1f}GHz"
+        ),
+        # AMDGPU(
+        #     "󰨜 {vram_perc:.1f} 󰎓 {gpu:02.0f}, {gpufreq:.2f}GHz", fg=2
+        # ),
+        ALSA(
+            "{icon} {vol:02.0f}", icons='󰕾󰖁', interval=5, fg=3
+        ),
+        Backlight(
+            "󰃟 {backlight:02.0f}", interval=5, fg=4
+        ),
+        # IMAP(
+        #     "{icon} {unread}", icons=["󰇮", "󰇰"], interval=60,
+        #     email="oliver_lew@outlook.com", passcmd="pass show mail/{email}"
+        # ),
+        Mpd(
+            "󰝚 {icon}", icons="󰏤󰐊󰓛", interval=5, fg=5
+        ),
+        Battery(
+            "{icon} {perc:02.0f}", interval=5, fg=6,
+            icons=['󰂎󰁺󰁻󰁼󰁽󰁾󰁿󰂀󰂁󰂂󰁹', '󰢟󰢜󰂆󰂇󰂈󰢝󰂉󰢞󰂊󰂋󰂅', "󱉞"]
+        ),
+        Network(
+            "{icon}", icons=["󰤯󰤟󰤢󰤥󰤨", "󰈀"], fg=1
+        ),
+        Date(
+            "󰃰 {date}", fg=6
+        ),
+        Dunst(
+            "{icon}", icons="󰂞󰂛", interval=5, fg=6
+        ),
+        Segment(
+            "󰣖", fg=6
+        ),
+        Segment(
+            "󰍉", fg=6
+        ),
+    ], padding=1, dwm=True, tmux=True, tmux_socket='fbterm').start()
 
 
 if __name__ == "__main__":
