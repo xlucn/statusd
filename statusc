@@ -93,4 +93,4 @@ case "$1" in
     -h|--help|*) usage; exit ;;
 esac
 
-[ -n "$UPD" ] && pkill -RTMIN+$((0x${signal:-$1})) -f "python.*statusd"
+[ -n "$UPD" ] && statusctl "${signal:-$1}" "${BUTTON}"

@@ -13,7 +13,6 @@ import glob
 import imaplib
 import os
 import signal
-import socket
 import threading
 import time
 
@@ -51,8 +50,7 @@ class Notification:
 
 class Status:
     def __init__(self, segments, dwm=True, tmux=False, tmux_socket=None, padding=0):
-        self.socket_file = "/tmp/statusd.socket"
-        self.socket_bufsize = 32
+        self.fifo = "/tmp/statusd.pipe"
 
         self.dwm = dwm
         self.tmux = tmux
@@ -64,9 +62,9 @@ class Status:
         self.status = ["" for _ in range(len(segments))]
         self.threads = []
 
-        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.socket.bind(self.socket_file)
-        self.socket.listen()
+        if os.path.exists(self.fifo):
+            os.remove(self.fifo)
+        os.mkfifo(self.fifo)
 
         self.notify = Notification()
 
@@ -77,8 +75,8 @@ class Status:
             t = threading.Thread(target=self.loop(index))
             self.threads.append(t)
 
-        socket_thread = threading.Thread(target=self.listen)
-        self.threads.append(socket_thread)
+        fifo_thread = threading.Thread(target=self.listen)
+        self.threads.append(fifo_thread)
 
         if dwm:
             self.dpy = display.Display()
@@ -126,18 +124,28 @@ class Status:
 
     def listen(self):
         while not self.event.is_set():
-            try:  # catch exception here, not recv
-                conn, addr = self.socket.accept()
-            except OSError:
-                break
+            for line in open(self.fifo, 'r'):
+                line = line.strip()
+                label, sep, action = line.partition(",")
 
-            with conn:
-                data = conn.recv(self.socket_bufsize)
-                if not data:
+                if label == "stop" or sep != ',':
                     break
 
-                seg, action = data.decode().split(",")
-                print(f"segment #{seg}, action:{action}")
+                if len(label) != 1 or label[0] not in "123456789abcdef":
+                    logging.error(f'{label} is not a single-digit hex number')
+                    continue
+
+                index = int(label, base=16) - 1
+                if index >= len(self.segments):
+                    logging.error(f"{label} is not between 1 and {len(self.segments)}")
+                    continue
+
+                segment = self.segments[index]
+                name = type(segment).__name__
+                logging.info(f"Segment #{label} name: {name}, action: {action}")
+                self.update(index, notify=True)
+                self.show()
+
     def show(self):
         status_text = ''.join(self.status)
 
@@ -164,8 +172,8 @@ class Status:
 
     def stop(self, number, frame):
         self.event.set()
-        self.socket.shutdown(socket.SHUT_RDWR)
-        self.socket.close()
+        with open(self.fifo, 'w') as pipe:
+            pipe.write('stop')
         for t in self.threads:
             t.join()
 

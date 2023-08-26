@@ -1,17 +1,32 @@
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/socket.h>   /* socket, connect */
 #include <sys/un.h>       /* struct sockaddr_un */
 #include <unistd.h>       /* write, close */
 
+#define PIPE_NAME "/tmp/statusd.pipe"
 #define SOCKET_NAME "/tmp/statusd.socket"
 #define BUFFER_SIZE 32
 
-int main (int argc, char *argv[])
+int open_pipe()
 {
-	int res, s;
-	char *button, *seg, *action, message[BUFFER_SIZE];
+	struct stat st;
+
+	stat(PIPE_NAME, &st);
+	if (!S_ISFIFO(st.st_mode)) {
+		fprintf(stderr, "%s is not a fifo.\n", PIPE_NAME);
+		exit(1);
+	}
+
+	return open(PIPE_NAME, O_WRONLY | O_NONBLOCK);
+}
+
+int open_socket()
+{
+	int s;
 	struct sockaddr_un addr;
 
 	s = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -24,6 +39,16 @@ int main (int argc, char *argv[])
 		exit(1);
 	}
 
+	return s;
+}
+
+int main (int argc, char *argv[])
+{
+	int res, fd;
+	char *button, *seg, *action, message[BUFFER_SIZE];
+
+	fd = open_pipe();
+
 	button = getenv("BUTTON");
 	if (argc == 2) {
 		seg = argv[1];
@@ -35,8 +60,9 @@ int main (int argc, char *argv[])
 	} else {
 		fprintf(stderr, "wrong command\n");
 	}
-	write(s, message, strlen(message));
-	close(s);
+
+	write(fd, message, strlen(message));
+	close(fd);
 
 	return 0;
 }
