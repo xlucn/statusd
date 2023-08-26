@@ -253,8 +253,8 @@ class AMDGPU(Segment):
         fmts = {
             'gpu': float(self.get('gpu_busy_percent')),
             'gpufreq': sum(self.gpu_clocks) / len(self.gpu_clocks) / 1000,
-            'vram': float(self.get('mem_info_vram_used')),
-            'vram_total': float(self.get('mem_info_vram_total')),
+            'vram': float(self.get('mem_info_vram_used')) / 1024**2,
+            'vram_total': float(self.get('mem_info_vram_total')) / 1024**2,
             'vramfreq': sum(self.vram_clocks) / len(self.vram_clocks) / 1000
         }
         fmts['vram_perc'] = 100 * fmts['vram'] / fmts['vram_total']
