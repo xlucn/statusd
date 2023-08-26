@@ -11,6 +11,7 @@ See https://github.com/OliverLew/dwm
 
 import glob
 import imaplib
+import logging
 import os
 import signal
 import threading
@@ -22,6 +23,8 @@ from libtmux.server import Server as TmuxServer
 from libtmux.exc import LibTmuxException
 from pyalsa import alsamixer
 from Xlib import display
+
+logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO"))
 
 
 class Notification:
@@ -390,12 +393,11 @@ class IMAP(Segment):
         elif passcmd:
             p = os.popen(passcmd.format(email=email))
             self.password = p.readline().strip()
-            returncode = p.close()
-            if returncode:
-                print(f"command exits with return value {returncode}")
+            if returncode := p.close():
+                logging.error(f"command {passcmd} exits with return value {returncode}")
                 exit(1)
         else:
-            print("You have to either specify email password or provide a command")
+            logging.error("You have to either specify email password or provide a command")
             exit(1)
 
     def run(self, notify=False):
