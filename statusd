@@ -89,8 +89,6 @@ class Status:
 
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
-        for sig in range(signal.SIGRTMIN, signal.SIGRTMAX + 1):
-            signal.signal(sig, self.sighandler)
 
     def update(self, i, notify=False):
         segment = self.segments[i]
@@ -110,12 +108,6 @@ class Status:
         if segment.bgcolor:
             segstr = chr(segment.bgcolor + 24) + segstr
         self.status[i] = segstr
-
-    def sighandler(self, number, frame):
-        index = number - signal.SIGRTMIN - 1
-        if index < len(self.segments):
-            self.update(index, notify=True)
-            self.show()
 
     def loop(self, i):
         def loopfunc():
