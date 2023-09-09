@@ -52,11 +52,11 @@ int main (int argc, char *argv[])
 	button = getenv("BUTTON");
 	if (argc == 2) {
 		seg = argv[1];
-		snprintf(message, BUFFER_SIZE, "%s, %s", seg, button);
+		snprintf(message, BUFFER_SIZE, "%s,%s", seg, button);
 	} else if (argc == 3) {
 		seg = argv[1];
 		action = argv[2];
-		snprintf(message, BUFFER_SIZE, "%s, %s", seg, action);
+		snprintf(message, BUFFER_SIZE, "%s,%s", seg, action);
 	} else {
 		fprintf(stderr, "wrong command\n");
 	}
