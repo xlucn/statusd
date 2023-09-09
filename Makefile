@@ -4,8 +4,11 @@ all: statusctl
 
 statusctl: statusctl.c
 
+clean:
+	rm statusctl
+
 install:
-	install statusc statusd statusctl ${PREFIX}/bin
+	install statusd statusctl ${PREFIX}/bin
 
 uninstall:
-	rm -f ${PREFIX}/bin/statusc ${PREFIX}/bin/statusd
+	rm -f ${PREFIX}/bin/{statusd,statusctl}
