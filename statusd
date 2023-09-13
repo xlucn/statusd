@@ -192,13 +192,23 @@ class Command:
 
 
 class Segment:
-    def __init__(self, fmtstr, interval=1, icons=[], fg=None, bg=None, buttons={}):
+    def __init__(self, fmtstr, interval=1, icons=[], fg=None, bg=None, buttons=None):
         self.interval = interval
         self.fmtstr = fmtstr
         self.icons = icons
         self.fgcolor = fg
         self.bgcolor = bg
         self.buttons = buttons
+        if self.buttons is None:
+            self.buttons = {}
+
+    def add_button(self, button, command):
+        if isinstance(button, list):
+            for b in button:
+                self.add_button(b, command)
+            return
+
+        self.buttons[button] = command
 
     def run(self, notify=False):
         return {}
