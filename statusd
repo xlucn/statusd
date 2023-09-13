@@ -33,23 +33,20 @@ class Notification:
         bus_name = "org.freedesktop.Notifications"
         obj_path = "/org/freedesktop/Notifications"
         bus = dbus.SessionBus()
-        obj = bus.get_object(bus_name, obj_path)
+        self.obj = bus.get_object(bus_name, obj_path)
 
-        interface = dbus.Interface(obj, bus_name)
-        self.notify_func = interface.get_dbus_method("Notify")
+        interface = dbus.Interface(self.obj, bus_name)
+        self.func_notify = interface.get_dbus_method("Notify")
 
-        interface_properties = dbus.Interface(obj, "org.freedesktop.DBus.Properties")
-        self.property_get = interface_properties.get_dbus_method("Get")
+        properties = dbus.Interface(self.obj, "org.freedesktop.DBus.Properties")
+        self.property_get = properties.get_dbus_method("Get")
+        self.property_set = properties.get_dbus_method("Set")
 
     def notify(self, summary, body="", icon="", value=None, urgency=1, timeout=3000):
         hints = {"urgency": urgency, "x-canonical-private-synchronous": "statusd"}
         if value is not None:
             body += "[" + "=" * (value // 2) + ">" + " " * (50 - value // 2) + "]"
-        self.notify_func("statusd", 0, icon, summary, body, [], hints, timeout)
-
-    def dunst_paused(self):
-        # see dunstctl script from dunst project
-        return self.property_get("org.dunstproject.cmd0", "paused").bit_count()
+        self.func_notify("statusd", 0, icon, summary, body, [], hints, timeout)
 
 
 class Status:
@@ -380,9 +377,30 @@ class Date(Segment):
         return {'date': time.strftime("%a %b %d %H:%M:%S")}
 
 
-class Dunst(Segment):
+class Dunst(Segment, Notification):
+    def __init__(self, fmtstr, **kargs):
+        Segment.__init__(self, fmtstr, **kargs)
+        Notification.__init__(self)
+        self.interface = dbus.Interface(self.obj,
+                                        "org.dunstproject.cmd0")
+
+    def show(self):
+        self.interface.get_dbus_method("NotificationShow")()
+
+    def close(self):
+        self.interface.get_dbus_method("NotificationCloseLast")()
+
+    def close_all(self):
+        self.interface.get_dbus_method("NotificationCloseAll")()
+
+    def paused(self):
+        return bool(self.property_get("org.dunstproject.cmd0", "paused"))
+
+    def paused_toggle(self):
+        self.property_set("org.dunstproject.cmd0", "paused", not self.paused())
+
     def run(self, notify=False):
-        return {"icon": self.icons[self.notification.dunst_paused()]}
+        return {"icon": self.icons[self.paused()]}
 
 
 class IMAP(Segment):
