@@ -62,6 +62,7 @@ class Status:
         self.event = threading.Event()
         self.status = [""] * len(segments)
         self.threads = []
+        self.aliases = {}
 
         if os.path.exists(self.fifo):
             os.remove(self.fifo)
@@ -75,6 +76,7 @@ class Status:
 
             t = threading.Thread(target=self.loop(index))
             self.threads.append(t)
+            self.aliases[segment.alias] = index
 
         fifo_thread = threading.Thread(target=self.listen)
         self.threads.append(fifo_thread)
@@ -126,13 +128,16 @@ class Status:
                     logging.info('stopping')
                     break
 
-                if len(label) != 1 or label[0] not in "123456789abcdef":
-                    logging.error(f'{label} is not a single-digit hex number')
-                    continue
+                if len(label) == 1 and label[0] in "123456789abcdef":
+                    index = int(label, base=16) - 1
+                    if index >= len(self.segments):
+                        logging.error(f"{label} is too large for label")
+                        continue
 
-                index = int(label, base=16) - 1
-                if index >= len(self.segments):
-                    logging.error(f"{label} is not between 1 and {len(self.segments)}")
+                elif label in self.aliases:
+                    index = self.aliases[label]
+                else:
+                    logging.error(f'{label} is not a single-digit hex number')
                     continue
 
                 segment = self.segments[index]
@@ -192,13 +197,16 @@ class Command:
 
 
 class Segment:
-    def __init__(self, fmtstr, interval=1, icons=[], fg=None, bg=None, buttons=None):
+    def __init__(self, fmtstr, interval=1,
+                 icons=[], fg=None, bg=None,
+                 buttons=None, alias=None):
         self.interval = interval
         self.fmtstr = fmtstr
         self.icons = icons
         self.fgcolor = fg
         self.bgcolor = bg
         self.buttons = buttons
+        self.alias = alias
         if self.buttons is None:
             self.buttons = {}
 
