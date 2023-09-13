@@ -238,6 +238,20 @@ class ALSA(Segment):
         self.alsa = alsamixer.Element(self.mixer, 'Master')
         self.alsa_range = self.alsa.get_volume_range()
 
+    def toggle(self):
+        self.mixer.handle_events()
+        self.alsa.set_switch(not self.alsa.get_switch())
+
+    def set(self, offset_perc):
+        self.mixer.handle_events()
+
+        old_volume = self.alsa.get_volume()
+        new_volume = old_volume + self.alsa_range[1] * offset_perc // 100
+        new_volume = max(new_volume, self.alsa_range[0])
+        new_volume = min(new_volume, self.alsa_range[1])
+
+        self.alsa.set_volume_all(new_volume)
+
     def run(self, notify=False):
         self.mixer.handle_events()
         volume = self.alsa.get_volume()
