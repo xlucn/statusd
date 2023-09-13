@@ -523,6 +523,10 @@ class Mpd(Segment):
         self.port = kargs.get("port", 6600)
         self.connect()
 
+        self.kill = self.mpdclient.kill
+        self.pause = self.mpdclient.pause
+        self.seek = self.mpdclient.seekcur
+
     def connect(self):
         try:
             self.mpdclient.connect(self.host, self.port)
