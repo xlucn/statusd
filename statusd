@@ -365,7 +365,8 @@ class Battery(Segment):
                     fmts['time'] = 0
 
         if notify:
-            self.notification.notify(f"Battery: {fmts['perc']:02.0f}%\nTime: {fmts['time']:.1f}h")
+            self.notification.notify(f"Battery: {fmts['perc']:02.0f}%\n"
+                                     f"Time: {fmts['time']:.1f}h")
 
         fmts['icon'] = self.icons[fmts.get('ac')][int((fmts['perc'] + 5) / 10)]
         return fmts
@@ -461,7 +462,7 @@ class IMAP(Segment):
                 logging.error(f"command {passcmd} exits with return value {returncode}")
                 exit(1)
         else:
-            logging.error("You have to either specify email password or provide a command")
+            logging.error("IMAP: need explicit password or a command")
             exit(1)
 
     def run(self, notify=False):
