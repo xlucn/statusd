@@ -146,6 +146,8 @@ class Status:
                         p = subprocess.Popen(cmd)
                         if button.update:
                             p.wait()
+                    if button.func is not None:
+                        button.func(*button.args)
                     if button.update:
                         self.update(index, notify=True)
                 self.show()
@@ -178,8 +180,12 @@ class Status:
 
 
 class Command:
-    def __init__(self, cmd=None, terminal=False, update=False):
+    def __init__(self, cmd=None, func=None, args=None, terminal=False, update=False):
         self.cmd = cmd
+        self.func = func
+        self.args = args
+        if self.func is not None and self.args is None:
+            self.args = ()
         self.update = update
         if terminal:
             self.cmd = 'st -c floating -e ' + cmd
