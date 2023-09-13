@@ -579,91 +579,73 @@ class Network(Segment):
 
 
 def main():
+    alsa = ALSA("{icon} {vol:02.0f}", icons='󰕾󰖁', interval=5, fg=3, alias='vol')
+    alsa.add_button(['1', 'mute'], Command(func=alsa.toggle, update=True))
+    alsa.add_button('3', Command('alsamixer', terminal=True))
+    alsa.add_button(['4', 'up'], Command(func=alsa.set, args=(+4,), update=True))
+    alsa.add_button(['5', 'down'], Command(func=alsa.set, args=(-4,), update=True))
+
+    amdgpu = AMDGPU("󰨜 {vram_perc:.1f} 󰎓 {gpu:02.0f}, {gpufreq:.2f}GHz", fg=2)
+    amdgpu.add_button('1', Command(update=True))
+    amdgpu.add_button('3', Command('amdgpu_top', terminal=True))
+
+    backlight = Backlight("󰃟 {backlight:02.0f}", interval=5, fg=4, alias='backlight')
+    backlight.add_button(['4', 'up'], Command('brightnessctl -q s 4%+', update=True))
+    backlight.add_button(['5', 'down'], Command('brightnessctl -q s 4%-', update=True))
+
+    battery = Battery("{icon} {perc:02.0f}", interval=5, fg=6,
+                      icons=['󰂎󰁺󰁻󰁼󰁽󰁾󰁿󰂀󰂁󰂂󰁹', '󰢟󰢜󰂆󰂇󰂈󰢝󰂉󰢞󰂊󰂋󰂅', "󱉞"])
+    battery.add_button('1', Command(update=True))
+
+    cpu = CPU("󰓅 {perc:02.0f}, {freq:0.1f}GHz")
+    cpu.add_button('3', Command('top -o %CPU', terminal=True))
+
+    date = Date("󰃰 {date}", fg=6)
+
+    dunst = Dunst("{icon}", icons="󰂞󰂛", interval=5, fg=6)
+    dunst.add_button('1', Command(func=dunst.paused_toggle, update=True))
+    dunst.add_button('3', Command(func=dunst.close_all))
+    dunst.add_button('4', Command(func=dunst.show))
+    dunst.add_button('5', Command(func=dunst.close))
+
+    # imap = IMAP("{icon} {unread}", icons=["󰇮", "󰇰"], interval=60,
+    #             email="oliver_lew@outlook.com",
+    #             passcmd="pass show mail/{email}")
+
+    memory = Memory("󰍛 {perc:02.0f}", interval=5, fg=1)
+    memory.add_button('1', Command(update=True))
+    memory.add_button('3', Command('top -o RES', terminal=True))
+
+    mpd = Mpd("󰝚 {icon}", icons="󰏤󰐊󰓛", interval=5, fg=5, alias='mpd')
+    mpd.add_button(['1', 'pause'], Command(func=mpd.pause, update=True))
+    mpd.add_button(['2', 'stop'], Command(func=mpd.kill, update=True))
+    mpd.add_button(['3'], Command(cmd='ncmpc', terminal=True))
+    mpd.add_button(['4', 'forward'], Command(func=mpd.seek, args=('+20',)))
+    mpd.add_button(['5', 'backward'], Command(func=mpd.seek, args=('-20',)))
+
+    # network = Network("{icon}", icons=["󰤯󰤟󰤢󰤥󰤨", "󰈀"], fg=1)
+    # network.add_button('1', Command(update=True))
+    # network.add_button('3', Command('nmtui', terminal=True))
+
+    rofi = Segment("󰣖", fg=6)
+    rofi.add_button('1', Command('rofi -show run'))
+
+    launcher = Segment("󰍉", fg=6)
+    launcher.add_button('1', Command('rofi -theme launcher -show drun'))
+    launcher.add_button('3', Command('xdg-xmenu -s 48'))
+
     Status([
-        Memory(
-            "󰍛 {perc:02.0f}", interval=5, fg=1, buttons={
-                '1': Command(update=True),
-                '3': Command('top -o RES', terminal=True),
-            }
-        ),
-        CPU(
-            "󰓅 {perc:02.0f}, {freq:0.1f}GHz", buttons={
-                '3': Command('top -o %CPU', terminal=True),
-            }
-        ),
-        AMDGPU(
-            "󰨜 {vram_perc:.1f} 󰎓 {gpu:02.0f}, {gpufreq:.2f}GHz", fg=2, buttons={
-                '1': Command(update=True),
-                '3': Command('amdgpu_top', terminal=True),
-            }
-        ),
-        ALSA(
-            "{icon} {vol:02.0f}", icons='󰕾󰖁', interval=5, fg=3, buttons={
-                '1': Command('amixer -q sset Master toggle', update=True),
-                'mute': Command('amixer -q sset Master toggle', update=True),
-                '3': Command('alsamixer', terminal=True),
-                '4': Command('amixer -q sset Master 4%+', update=True),
-                'up': Command('amixer -q sset Master 4%+', update=True),
-                '5': Command('amixer -q sset Master 4%-', update=True),
-                'down': Command('amixer -q sset Master 4%-', update=True),
-            }
-        ),
-        Backlight(
-            "󰃟 {backlight:02.0f}", interval=5, fg=4, buttons={
-                '4': Command('brightnessctl -c backlight -q s 4%+', update=True),
-                'up': Command('brightnessctl -c backlight -q s 4%+', update=True),
-                '5': Command('brightnessctl -c backlight -q s 4%-', update=True),
-                'down': Command('brightnessctl -c backlight -q s 4%-', update=True),
-            }
-        ),
-        # IMAP(
-        #     "{icon} {unread}", icons=["󰇮", "󰇰"], interval=60,
-        #     email="oliver_lew@outlook.com", passcmd="pass show mail/{email}"
-        # ),
-        Mpd(
-            "󰝚 {icon}", icons="󰏤󰐊󰓛", interval=5, fg=5, buttons={
-                '1': Command('mpc -q toggle', update=True),
-                'pause': Command('mpc -q toggle', update=True),
-                '2': Command('mpc -q stop', update=True),
-                'stop': Command('mpc -q stop', update=True),
-                '3': Command('ncmpc', terminal=True),
-                '4': Command('mpc -q seek +20'),
-                'forward': Command('mpc -q seek +20'),
-                '5': Command('mpc -q seek -20'),
-                'backward': Command('mpc -q seek -20'),
-            }
-        ),
-        Battery(
-            "{icon} {perc:02.0f}", interval=5, fg=6,
-            icons=['󰂎󰁺󰁻󰁼󰁽󰁾󰁿󰂀󰂁󰂂󰁹', '󰢟󰢜󰂆󰂇󰂈󰢝󰂉󰢞󰂊󰂋󰂅', "󱉞"],
-            buttons={'1': Command(update=True)},
-        ),
-        Network(
-            "{icon}", icons=["󰤯󰤟󰤢󰤥󰤨", "󰈀"], fg=1, buttons={
-                '1': Command(update=True),
-                '3': Command('nmtui', terminal=True),
-            }
-        ),
-        Date(
-            "󰃰 {date}", fg=6
-        ),
-        Dunst(
-            "{icon}", icons="󰂞󰂛", interval=5, fg=6, buttons={
-                '1': Command('dunstctl set-paused toggle', update=True),
-                '3': Command('dunstctl close-all'),
-                '4': Command('dunstctl history-pop'),
-                '5': Command('dunstctl close'),
-            }
-        ),
-        Segment(
-            "󰣖", fg=6, buttons={'1': Command('rofi -show run')},
-        ),
-        Segment(
-            "󰍉", fg=6, buttons={
-                '1': Command('rofi -theme launcher -show drun'),
-                '3': Command('xdg-xmenu -s 48'),
-            }
-        ),
+        memory,
+        cpu,
+        amdgpu,
+        alsa,
+        backlight,
+        mpd,
+        battery,
+        date,
+        dunst,
+        rofi,
+        launcher,
     ], padding=1, dwm=True, tmux=True, tmux_socket='fbterm').start()
 
 
