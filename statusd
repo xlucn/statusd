@@ -123,17 +123,20 @@ class Status:
                 line = line.strip()
                 label, sep, action = line.partition(",")
 
-                if label == "stop" or sep != ',':
+                if label == "stop":
                     self.event.set()
                     logging.info('stopping')
                     break
+
+                if sep != ',':
+                    logging.error("wrong format")
+                    continue
 
                 if len(label) == 1 and label[0] in "123456789abcdef":
                     index = int(label, base=16) - 1
                     if index >= len(self.segments):
                         logging.error(f"{label} is too large for label")
                         continue
-
                 elif label in self.aliases:
                     index = self.aliases[label]
                 else:
@@ -152,7 +155,10 @@ class Status:
                         if button.update:
                             p.wait()
                     if button.func is not None:
-                        button.func(*button.args)
+                        try:
+                            button.func(*button.args)
+                        except Exception as e:
+                            print(e)
                     if button.update:
                         self.update(index, notify=True)
                 self.show()
