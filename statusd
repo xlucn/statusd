@@ -530,7 +530,7 @@ class Mpd(Segment):
         self.port = kargs.get("port", 6600)
         self.connect()
 
-        self.kill = self.mpdclient.kill
+        self.stop = self.mpdclient.stop
         self.pause = self.mpdclient.pause
         self.seek = self.mpdclient.seekcur
 
@@ -625,7 +625,7 @@ def main():
 
     mpd = Mpd("󰝚 {icon}", icons="󰏤󰐊󰓛", interval=5, fg=5, alias='mpd')
     mpd.add_button(['1', 'pause'], Command(func=mpd.pause, update=True))
-    mpd.add_button(['2', 'stop'], Command(func=mpd.kill, update=True))
+    mpd.add_button(['2', 'stop'], Command(func=mpd.stop, update=True))
     mpd.add_button(['3'], Command(cmd='ncmpc', terminal=True))
     mpd.add_button(['4', 'forward'], Command(func=mpd.seek, args=('+20',)))
     mpd.add_button(['5', 'backward'], Command(func=mpd.seek, args=('-20',)))
