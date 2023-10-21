@@ -76,7 +76,8 @@ class Status:
 
             t = threading.Thread(target=self.loop(index))
             self.threads.append(t)
-            self.aliases[segment.alias] = index
+            if segment.alias:
+                self.aliases[segment.alias] = index
 
         fifo_thread = threading.Thread(target=self.listen)
         self.threads.append(fifo_thread)
